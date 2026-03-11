@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pen Plotter Web Controller</title>
+  <meta name="description" content="Convert images to G-code and control your Arduino pen plotter directly from the browser">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="scanlines"></div>
+
+  <!-- Header -->
+  <header id="app-header">
+    <div class="header-logo">
+      <span class="logo-icon">◈</span>
+      <span class="logo-text">Pen<span class="accent">Plotter</span></span>
+    </div>
+    <div class="header-center" id="header-breadcrumb"></div>
+    <button class="info-btn" id="info-btn" title="Info &amp; Arduino Guide">
+      <span class="info-icon">ⓘ</span><span class="info-label">GUIDE</span>
+    </button>
+  </header>
+
+  <!-- ═══ SCREEN 0: Mode Selection ═══ -->
+  <main id="screen-mode" class="screen active">
+    <div class="screen-content center-content">
+      <div class="hero-text">
+        <div class="hero-tag">KALINGA · PEN PLOTTER</div>
+        <h1 class="hero-title">MISSION<span class="accent"> CONTROL</span></h1>
+        <p class="hero-sub">Select your conversion protocol to begin the mission</p>
+      </div>
+      <div class="mode-grid">
+        <button class="mode-card" id="btn-automated" data-mode="automated">
+          <div class="card-glow"></div>
+          <div class="card-icon">⚡</div>
+          <div class="card-badge">RECOMMENDED</div>
+          <h2 class="card-title">AUTOMATED</h2>
+          <p class="card-desc">Upload and go. Full autonomous pipeline with live timeline. Zero input required.</p>
+          <ul class="card-feats"><li>Auto background removal</li><li>Auto vectorise</li><li>Auto G-code</li><li>Live timeline</li></ul>
+          <div class="card-cta">INITIATE →</div>
+        </button>
+        <button class="mode-card" id="btn-semi" data-mode="semi">
+          <div class="card-glow"></div>
+          <div class="card-icon">⚙</div>
+          <h2 class="card-title">SEMI-AUTO</h2>
+          <p class="card-desc">Position and scale your image on the 7×7 cm canvas. Pipeline handles the rest.</p>
+          <ul class="card-feats"><li>Drag to position</li><li>Resize to fit</li><li>Auto vectorise</li><li>Auto G-code</li></ul>
+          <div class="card-cta">INITIATE →</div>
+        </button>
+        <button class="mode-card" id="btn-manual" data-mode="manual">
+          <div class="card-glow"></div>
+          <div class="card-icon">🎛</div>
+          <h2 class="card-title">MANUAL</h2>
+          <p class="card-desc">Full control over every parameter. Threshold, spacing, tool diameter and more.</p>
+          <ul class="card-feats"><li>Full parameter control</li><li>Live preview</li><li>Per-step execution</li><li>Expert mode</li></ul>
+          <div class="card-cta">INITIATE →</div>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 1: Image Upload ═══ -->
+  <main id="screen-upload" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <button class="back-btn" id="upload-back">← BACK</button>
+        <h2 class="screen-title">UPLOAD <span class="accent">IMAGE</span></h2>
+        <div class="mode-badge" id="upload-mode-badge"></div>
+      </div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".jpg,.jpeg,.png">
+        <div class="upload-inner" id="upload-trigger">
+          <div class="upload-icon">⬆</div>
+          <div class="upload-text">DRAG &amp; DROP IMAGE</div>
+          <div class="upload-sub">or click to browse</div>
+          <div class="upload-formats">Supported: JPG · JPEG · PNG</div>
+        </div>
+      </div>
+      <div id="preview-container" class="preview-container hidden">
+        <div class="preview-header">
+          <span class="preview-label">IMAGE PREVIEW</span>
+          <span class="preview-info" id="preview-info"></span>
+        </div>
+        <div class="preview-img-wrap">
+          <img id="preview-img" alt="Uploaded image preview">
+        </div>
+        <div class="preview-actions">
+          <button class="btn-secondary" id="btn-reupload">⟳ RE-UPLOAD</button>
+          <button class="btn-primary" id="btn-proceed-upload">PROCEED WITH IMAGE →</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 2A: Semi-Auto Canvas Editor ═══ -->
+  <main id="screen-editor" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <button class="back-btn" id="editor-back">← BACK</button>
+        <h2 class="screen-title">CANVAS <span class="accent">EDITOR</span></h2>
+        <div class="mode-badge">SEMI-AUTO</div>
+      </div>
+      <div class="editor-layout">
+        <div class="editor-panel">
+          <div class="panel-label">7 × 7 CM WORK AREA</div>
+          <div class="canvas-wrapper">
+            <canvas id="editor-canvas" width="350" height="350"></canvas>
+          </div>
+          <div class="canvas-coords" id="canvas-coords">X: 0.0 mm · Y: 0.0 mm</div>
+        </div>
+        <div class="editor-side">
+          <div class="editor-info-grid">
+            <div class="einfo-row"><span>Pos X</span><span id="info-pos-x">0.0 mm</span></div>
+            <div class="einfo-row"><span>Pos Y</span><span id="info-pos-y">0.0 mm</span></div>
+            <div class="einfo-row"><span>Scale</span><span id="info-scale">100%</span></div>
+            <div class="einfo-row"><span>Coverage</span><span id="info-coverage">--</span></div>
+          </div>
+          <div class="editor-tip">💡 Drag to reposition · Corner handle to resize · Dbl-click to reset</div>
+          <button class="btn-primary full-width" id="btn-process-semi">⚙ PROCESS IMAGE →</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 2B: Manual Controls ═══ -->
+  <main id="screen-manual" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <button class="back-btn" id="manual-back">← BACK</button>
+        <h2 class="screen-title">MANUAL <span class="accent">CONTROLS</span></h2>
+        <div class="mode-badge">MANUAL</div>
+      </div>
+      <div class="manual-layout">
+        <div class="controls-panel">
+          <div class="control-group">
+            <div class="group-label">STEP 1 › IMAGE SETTINGS</div>
+            <label class="ctrl-label">Threshold: <span id="threshold-val">128</span></label>
+            <input type="range" id="threshold-slider" min="0" max="255" value="128" class="ctrl-slider">
+            <div class="ctrl-row"><label class="ctrl-label">Offset X (mm)</label><input type="number" id="offset-x" value="0" min="-70" max="70" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Offset Y (mm)</label><input type="number" id="offset-y" value="0" min="-70" max="70" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Scale (%)</label><input type="number" id="img-scale" value="100" min="10" max="100" class="ctrl-input"></div>
+            <button class="btn-step" id="btn-apply-threshold">▶ APPLY &amp; PREVIEW</button>
+          </div>
+          <div class="control-group">
+            <div class="group-label">STEP 2 › G-CODE SETTINGS</div>
+            <div class="ctrl-row"><label class="ctrl-label">Tool diameter (mm)</label><input type="number" id="tool-diam" value="0.3" min="0.1" max="5" step="0.1" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Feed rate (mm/min)</label><input type="number" id="feed-rate" value="800" min="100" max="3000" step="100" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Safe Z — pen up (mm)</label><input type="number" id="safe-z" value="5" min="1" max="20" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Draw Z — pen down (mm)</label><input type="number" id="draw-z" value="0" min="-5" max="5" step="0.5" class="ctrl-input"></div>
+            <button class="btn-step" id="btn-gen-gcode">▶ GENERATE G-CODE</button>
+          </div>
+          <button class="btn-primary full-width" id="btn-manual-continue" disabled>→ PROCEED TO RESULTS</button>
+        </div>
+        <div class="preview-panel">
+          <div class="preview-tab-row">
+            <button class="preview-tab active" data-tab="original">ORIGINAL</button>
+            <button class="preview-tab" data-tab="processed">PROCESSED</button>
+            <button class="preview-tab" data-tab="gcode">G-CODE</button>
+          </div>
+          <div class="tab-content active" id="tab-original"><img id="manual-orig-img" alt="Original image"></div>
+          <div class="tab-content" id="tab-processed"><canvas id="manual-canvas" width="350" height="350"></canvas></div>
+          <div class="tab-content" id="tab-gcode"><textarea id="manual-gcode-out" class="gcode-textarea" readonly placeholder="G-code will appear here..."></textarea></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 3: Processing Timeline ═══ -->
+  <main id="screen-processing" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <h2 class="screen-title">PROCESSING <span class="accent">PIPELINE</span></h2>
+        <div class="mode-badge" id="proc-mode-badge"></div>
+      </div>
+      <div class="processing-layout">
+        <div class="timeline-panel">
+          <div class="timeline" id="timeline"></div>
+        </div>
+        <div class="proc-preview-panel">
+          <div class="panel-label">LIVE PREVIEW</div>
+          <canvas id="proc-canvas" width="280" height="280"></canvas>
+          <div class="proc-status" id="proc-status">Initialising…</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 4: Results ═══ -->
+  <main id="screen-results" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <button class="back-btn" id="results-back">← BACK</button>
+        <h2 class="screen-title">RESULTS <span class="accent">READY</span></h2>
+        <div class="success-badge">✓ COMPLETE</div>
+      </div>
+      <div class="results-layout">
+        <div class="results-left">
+          <div class="panel-label">VECTOR PREVIEW <small>(7×7 cm)</small></div>
+          <div id="svg-preview-container" class="svg-preview-box"></div>
+          <div class="results-stats" id="results-stats"></div>
+        </div>
+        <div class="results-right">
+          <div class="panel-label">GENERATED G-CODE</div>
+          <textarea id="results-gcode" class="gcode-textarea results-gcode" readonly></textarea>
+          <div class="rename-row">
+            <span class="rename-label">FILENAME:</span>
+            <input type="text" id="gcode-filename" value="plotter_output" class="rename-input">
+            <span class="rename-ext">.gcode</span>
+          </div>
+          <div class="results-btns">
+            <button class="btn-secondary" id="btn-download">⬇ DOWNLOAD G-CODE</button>
+            <button class="btn-primary" id="btn-to-controller">🎛 PROCEED TO CONTROLLER</button>
+          </div>
+          <div class="results-note">ⓘ Chrome / Edge required for Web Serial plotter controller</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 5: Plotter Controller ═══ -->
+  <main id="screen-controller" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <button class="back-btn" id="ctrl-back">← BACK</button>
+        <h2 class="screen-title">PLOTTER <span class="accent">CONTROLLER</span></h2>
+        <div class="connection-status" id="conn-status">
+          <span class="status-dot"></span><span class="status-text">DISCONNECTED</span>
+        </div>
+      </div>
+      <div id="serial-unsupported" class="alert-box hidden">
+        ⚠ Web Serial API not supported. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
+      </div>
+      <div class="controller-layout">
+        <!-- Left column -->
+        <div class="ctrl-col">
+          <div class="ctrl-card">
+            <div class="ctrl-card-label">CONNECTION</div>
+            <button class="btn-connect" id="btn-connect">⚡ CONNECT TO PLOTTER</button>
+            <button class="btn-secondary-sm" id="btn-send-settings" disabled>⚙ SEND GRBL SETTINGS</button>
+          </div>
+          <div class="ctrl-card">
+            <div class="ctrl-card-label">MACHINE CONTROLS</div>
+            <div class="machine-btns">
+              <button class="mbtn mbtn-pause" id="btn-pause" disabled>⏸ PAUSE</button>
+              <button class="mbtn mbtn-resume" id="btn-resume" disabled>▶ RESUME</button>
+              <button class="mbtn mbtn-stop" id="btn-stop" disabled>⬛ STOP</button>
+              <button class="mbtn mbtn-home" id="btn-home" disabled>⌂ HOME</button>
+            </div>
+          </div>
+          <div class="ctrl-card">
+            <div class="ctrl-card-label">JOG CONTROLS</div>
+            <div class="jog-pad">
+              <div></div>
+              <button class="jog-btn" id="jog-yp" disabled>▲ Y+</button>
+              <button class="jog-btn jog-z" id="jog-zp" disabled>Z+</button>
+              <button class="jog-btn" id="jog-xn" disabled>◄ X-</button>
+              <div class="jog-center-dot">·</div>
+              <button class="jog-btn" id="jog-xp" disabled>X+ ►</button>
+              <div></div>
+              <button class="jog-btn" id="jog-yn" disabled>▼ Y-</button>
+              <button class="jog-btn jog-z" id="jog-zn" disabled>Z-</button>
+            </div>
+            <div class="jog-step-row">
+              <span class="ctrl-label">Step</span>
+              <select id="jog-step" class="ctrl-select">
+                <option value="0.1">0.1 mm</option>
+                <option value="1" selected>1 mm</option>
+                <option value="5">5 mm</option>
+                <option value="10">10 mm</option>
+              </select>
+            </div>
+          </div>
+          <div class="ctrl-card">
+            <div class="ctrl-card-label">POSITION</div>
+            <div class="pos-display">
+              <div class="pos-row"><span>X</span><span id="pos-x" class="pos-val">0.000</span></div>
+              <div class="pos-row"><span>Y</span><span id="pos-y" class="pos-val">0.000</span></div>
+              <div class="pos-row"><span>Z</span><span id="pos-z" class="pos-val">0.000</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- Right column -->
+        <div class="ctrl-col ctrl-col-wide">
+          <div class="ctrl-card">
+            <div class="ctrl-card-label">G-CODE STREAMING</div>
+            <div class="stream-info">
+              <div class="stream-filename" id="stream-filename">No file loaded</div>
+              <div class="stream-progress-wrap">
+                <div class="stream-progress-bar" id="stream-bar" style="width:0%"></div>
+              </div>
+              <div class="stream-stats" id="stream-stats">Lines: 0 / 0</div>
+            </div>
+            <button class="btn-primary" id="btn-start-plot" disabled>▶ START PLOTTING</button>
+          </div>
+          <div class="ctrl-card ctrl-card-grow">
+            <div class="ctrl-card-label">
+              SERIAL CONSOLE
+              <button class="btn-clear-console" id="btn-clear-console">CLEAR</button>
+            </div>
+            <div class="console-out" id="console-out"></div>
+            <div class="console-in-row">
+              <input type="text" id="console-input" class="console-input" placeholder="Send raw command…" disabled>
+              <button class="btn-send-cmd" id="btn-send-cmd" disabled>SEND</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ INFO PANEL OVERLAY ═══ -->
+  <div id="info-overlay" class="info-overlay hidden">
+    <div class="info-panel">
+      <div class="info-panel-header">
+        <h2>⚙ SYSTEM GUIDE</h2>
+        <button class="info-close" id="info-close">✕</button>
+      </div>
+      <div class="info-tabs">
+        <button class="itab active" data-itab="arduino">ARDUINO SETUP</button>
+        <button class="itab" data-itab="wiring">WIRING</button>
+        <button class="itab" data-itab="gcode-ref">G-CODE REF</button>
+        <button class="itab" data-itab="about">ABOUT</button>
+      </div>
+      <div class="info-body" id="info-body"></div>
+    </div>
+  </div>
+
+  <script src="info.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
