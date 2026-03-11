@@ -42,11 +42,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  // Sync nav highlight
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.screen === id);
+  });
 }
 
 function setBreadcrumb(txt) {
-  $('header-breadcrumb').textContent = txt;
+  // breadcrumb removed — nav bar shows context now
 }
+
+// ── Nav bar click handlers ──
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => showScreen(btn.dataset.screen));
+});
 
 // ─────────────────────────────────────────────
 //  SCREEN 0 — MODE SELECTION
