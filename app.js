@@ -488,31 +488,45 @@ $('btn-to-controller').addEventListener('click', () => {
   initController();
 });
 
-// ─────────────────────────────────────────────
-//  PLOTTER CONTROLLER — WEB SERIAL
-// ─────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+//  PLOTTER CONTROLLER — WEB SERIAL (GRBL 1.1f)
+// ──────────────────────────────────────────────────────────────
 $('ctrl-back').addEventListener('click', () => showScreen('screen-results'));
+
+let statusPoller = null;  // interval id for periodic '?' polling
 
 function initController() {
   if (!('serial' in navigator)) {
     $('serial-unsupported').classList.remove('hidden');
   }
-  // Load GCode into streaming panel
   if (state.generatedGCode) {
-    const name = $('gcode-filename').value.trim() || 'plotter_output';
-    $('stream-filename').textContent = `${name}.gcode`;
-    state.gcodeLines = state.generatedGCode.split('\n').filter(l => l.trim() && !l.startsWith(';'));
-    state.totalLines = state.gcodeLines.length;
-    $('stream-stats').textContent = `Lines: 0 / ${state.totalLines}`;
+    loadGCodeIntoController();
   }
 }
 
-function consoleLog(msg, cls='sys') {
-  const el = $('console-out');
-  const div = document.createElement('div');
-  div.className = cls; div.textContent = msg;
-  el.appendChild(div); el.scrollTop = el.scrollHeight;
+function loadGCodeIntoController() {
+  const name = ($('gcode-filename') && $('gcode-filename').value.trim()) || 'plotter_output';
+  $('stream-filename').textContent = name + '.gcode';
+  // Filter: skip blank lines and full-line comments; strip inline comments
+  state.gcodeLines = state.generatedGCode
+    .split('\n')
+    .map(l => l.replace(/;.*$/, '').trim())   // strip trailing comments
+    .filter(l => l.length > 0);               // remove blanks
+  state.totalLines = state.gcodeLines.length;
+  $('stream-stats').textContent = 'Lines: 0 / ' + state.totalLines;
 }
+
+/* ── Console helper ── */
+function consoleLog(msg, cls='sys') {
+  const el  = $('console-out');
+  const div = document.createElement('div');
+  div.className = cls;
+  div.textContent = msg;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ── Enable / disable all controller buttons ── */
 function setConnected(v) {
   state.isConnected = v;
   const cs = $('conn-status');
@@ -525,26 +539,50 @@ function setConnected(v) {
   });
 }
 
+/* ── Connect ── */
 $('btn-connect').addEventListener('click', async () => {
-  if (state.isConnected) {
-    await disconnectSerial(); return;
-  }
+  if (state.isConnected) { await disconnectSerial(); return; }
   try {
     state.port = await navigator.serial.requestPort();
     await state.port.open({ baudRate: 115200 });
+
+    // Build streams
     const enc = new TextEncoderStream();
     const dec = new TextDecoderStream();
     enc.readable.pipeTo(state.port.writable);
     state.port.readable.pipeTo(dec.writable);
     state.writer = enc.writable.getWriter();
     state.reader = dec.readable.getReader();
+
+    state.readBuffer  = '';
+    state.resolveOk   = null;
+    state.isConnected = true;
+
+    readLoop();
+
+    // GRBL wake-up: soft-reset then wait 1.5 s for startup message
+    await writeRaw('\x18');  // Ctrl+X soft reset
+    await sleep(1500);
+    // Send newline to flush any pending input
+    await writeRaw('\n');
+    await sleep(200);
+
     setConnected(true);
     $('btn-connect').textContent = '✕ DISCONNECT';
-    consoleLog('Connected at 115200 baud.', 'sys');
-    readLoop();
-  } catch(e) { consoleLog(`Connection failed: ${e.message}`, 'sys'); }
+    consoleLog('Connected at 115200 baud. GRBL reset sent.', 'sys');
+
+    // Start periodic status polling every 250ms
+    statusPoller = setInterval(() => {
+      if (state.isConnected && !state.isPlotting) writeRaw('?');
+    }, 500);
+
+  } catch(e) {
+    consoleLog('Connection failed: ' + e.message, 'sys');
+    state.isConnected = false;
+  }
 });
 
+/* ── Continuous read loop ── */
 async function readLoop() {
   state.readBuffer = '';
   while (state.isConnected) {
@@ -554,109 +592,185 @@ async function readLoop() {
       state.readBuffer += value;
       const parts = state.readBuffer.split('\n');
       state.readBuffer = parts.pop();
-      for (const line of parts) {
-        const t = line.trim();
+      for (const raw of parts) {
+        const t = raw.trim();
         if (!t) continue;
-        consoleLog(`← ${t}`, 'rx');
-        if (/<[A-Z].*>/.test(t)) parseStatus(t);
-        if ((t === 'ok' || t.startsWith('ok')) && state.resolveOk) {
-          state.resolveOk(); state.resolveOk = null;
+        // Status reports are noisy — log briefly
+        if (t.startsWith('<') && t.endsWith('>')) {
+          parseStatus(t);
+          continue; // Don't flood console with status lines
+        }
+        consoleLog('← ' + t, 'rx');
+        // Resolve the current sendSerial promise on 'ok' or 'error:'
+        if (state.resolveOk) {
+          if (t.startsWith('ok') || t.startsWith('error:') || t.startsWith('ALARM')) {
+            if (t.startsWith('error:') || t.startsWith('ALARM')) {
+              consoleLog('⚠ GRBL: ' + t, 'sys');
+            }
+            const fn = state.resolveOk;
+            state.resolveOk = null;
+            fn();
+          }
         }
       }
     } catch { break; }
   }
 }
 
+/* ── Parse GRBL status report <Idle|MPos:x,y,z|...> ── */
 function parseStatus(s) {
-  const m = s.match(/MPos:([\d.-]+),([\d.-]+),([\d.-]+)/);
+  // State label
+  const stateMatch = s.match(/<([A-Za-z]+)/);
+  if (stateMatch) {
+    const grblState = stateMatch[1];
+    const cs = $('conn-status');
+    cs.querySelector('.status-text').textContent = 'CONNECTED · ' + grblState.toUpperCase();
+  }
+  // Machine position
+  const m = s.match(/MPos:([-\d.]+),([-\d.]+),([-\d.]+)/);
   if (m) {
     $('pos-x').textContent = parseFloat(m[1]).toFixed(3);
     $('pos-y').textContent = parseFloat(m[2]).toFixed(3);
     $('pos-z').textContent = parseFloat(m[3]).toFixed(3);
   }
+  const w = s.match(/WPos:([-\d.]+),([-\d.]+),([-\d.]+)/);
+  if (w && !m) {
+    $('pos-x').textContent = parseFloat(w[1]).toFixed(3);
+    $('pos-y').textContent = parseFloat(w[2]).toFixed(3);
+    $('pos-z').textContent = parseFloat(w[3]).toFixed(3);
+  }
 }
 
-async function sendSerial(cmd) {
-  return new Promise(resolve => {
-    state.resolveOk = resolve;
-    state.writer.write(cmd + '\n');
-    consoleLog(`→ ${cmd}`, 'tx');
+/* ── Write raw bytes (for realtime chars that don't need 'ok') ── */
+async function writeRaw(s) {
+  if (!state.writer) return;
+  try { await state.writer.write(s); } catch(e) { consoleLog('Write error: ' + e.message, 'sys'); }
+}
+
+/* ── Send a G-code line, wait for 'ok' or give up after 10 s ── */
+function sendSerial(cmd) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      consoleLog('⚠ Timeout waiting for ok on: ' + cmd, 'sys');
+      state.resolveOk = null;
+      resolve();
+    }, 10000);
+    state.resolveOk = () => { clearTimeout(timeout); resolve(); };
+    consoleLog('→ ' + cmd, 'tx');
+    writeRaw(cmd + '\n');
   });
 }
 
+/* ── Disconnect ── */
 async function disconnectSerial() {
+  if (statusPoller) { clearInterval(statusPoller); statusPoller = null; }
   state.isConnected = false;
   state.isPlotting  = false;
+  state.resolveOk   = null;
   try { await state.reader.cancel(); } catch{}
   try { await state.writer.close(); } catch{}
-  try { await state.port.close(); } catch{}
+  try { await state.port.close();   } catch{}
   state.port = state.writer = state.reader = null;
   setConnected(false);
   $('btn-connect').textContent = '⚡ CONNECT TO PLOTTER';
   consoleLog('Disconnected.', 'sys');
 }
 
-// Send GRBL settings
+/* ── Send GRBL settings (correct for 3-stepper 28BYJ-48 setup) ── */
 const GRBL_SETTINGS = [
-  '$0=10','$1=25','$100=25.0','$101=25.0','$102=25.0',
-  '$110=500','$111=500','$112=500',
-  '$120=10','$121=10','$130=70','$131=70'
+  '$0=10',   // step pulse µs
+  '$1=25',   // step idle delay ms
+  '$100=25.0', '$101=25.0', '$102=25.0',   // steps/mm X Y Z
+  '$110=500', '$111=500', '$112=200',      // max rate X Y Z (mm/min)
+  '$120=10',  '$121=10',  '$122=10',       // accel X Y Z (mm/sec²)
+  '$130=70',  '$131=70',  '$132=10'        // max travel X Y Z (mm)
 ];
 $('btn-send-settings').addEventListener('click', async () => {
   consoleLog('Sending GRBL settings…', 'sys');
   for (const s of GRBL_SETTINGS) await sendSerial(s);
-  consoleLog('GRBL settings applied.', 'sys');
+  consoleLog('✓ GRBL settings applied.', 'sys');
 });
 
-// Start plotting
+/* ── Start plotting ── */
 $('btn-start-plot').addEventListener('click', async () => {
   if (state.isPlotting) return;
-  if (!state.gcodeLines.length) { consoleLog('No G-code loaded.','sys'); return; }
+  if (!state.gcodeLines || !state.gcodeLines.length) {
+    consoleLog('No G-code loaded. Process an image first, then come here.', 'sys');
+    return;
+  }
   state.isPlotting  = true;
   state.isPaused    = false;
   state.currentLine = 0;
   $('btn-start-plot').disabled = true;
 
+  // Stop status polling during plot (GRBL can't handle both at once)
+  if (statusPoller) { clearInterval(statusPoller); statusPoller = null; }
+
+  consoleLog('▶ Plot started — ' + state.gcodeLines.length + ' lines', 'sys');
+
   for (const line of state.gcodeLines) {
     if (!state.isPlotting) break;
-    while (state.isPaused) await sleep(100);
+    while (state.isPaused) await sleep(200);
     await sendSerial(line);
     state.currentLine++;
     const pct = (state.currentLine / state.totalLines * 100).toFixed(1);
     $('stream-bar').style.width = pct + '%';
-    $('stream-stats').textContent = `Lines: ${state.currentLine} / ${state.totalLines} (${pct}%)`;
+    $('stream-stats').textContent =
+      'Lines: ' + state.currentLine + ' / ' + state.totalLines + '  (' + pct + '%)';
   }
 
   state.isPlotting = false;
   $('btn-start-plot').disabled = false;
-  consoleLog('Plot complete!', 'sys');
+
+  // Resume status polling
+  if (state.isConnected) {
+    statusPoller = setInterval(() => {
+      if (state.isConnected && !state.isPlotting) writeRaw('?');
+    }, 500);
+  }
+
+  if (state.currentLine >= state.totalLines) {
+    consoleLog('✓ Plot complete!', 'sys');
+  } else {
+    consoleLog('Plot stopped at line ' + state.currentLine, 'sys');
+  }
 });
 
+/* ── Feed hold / resume ── */
 $('btn-pause').addEventListener('click', async () => {
   state.isPaused = true;
-  await state.writer.write('!\n');
-  consoleLog('Feed hold sent.', 'sys');
+  await writeRaw('!');  // GRBL real-time feed hold
+  consoleLog('⏸ Feed hold sent.', 'sys');
 });
 $('btn-resume').addEventListener('click', async () => {
   state.isPaused = false;
-  await state.writer.write('~\n');
-  consoleLog('Cycle start sent.', 'sys');
+  await writeRaw('~');  // GRBL real-time cycle start
+  consoleLog('▶ Cycle start sent.', 'sys');
 });
-$('btn-stop').addEventListener('click', async () => {
-  state.isPlotting = false; state.isPaused = false;
-  await state.writer.write('\x18');
-  consoleLog('Soft reset sent.', 'sys');
-  $('stream-bar').style.width = '0%';
-  $('stream-stats').textContent = `Lines: 0 / ${state.totalLines}`;
-  state.currentLine = 0;
-});
-$('btn-home').addEventListener('click', async () => { await sendSerial('G28'); });
 
-// Jog
+/* ── Stop / soft-reset ── */
+$('btn-stop').addEventListener('click', async () => {
+  state.isPlotting = false;
+  state.isPaused   = false;
+  state.resolveOk  = null;   // abandon any pending handshake
+  await writeRaw('\x18');    // GRBL Ctrl+X soft reset
+  consoleLog('⬛ Soft reset sent. Wait for Grbl ready…', 'sys');
+  $('stream-bar').style.width = '0%';
+  $('stream-stats').textContent = 'Lines: 0 / ' + state.totalLines;
+  state.currentLine = 0;
+  $('btn-start-plot').disabled = false;
+});
+
+/* ── Home ── */
+$('btn-home').addEventListener('click', async () => { await sendSerial('G0 X0 Y0'); });
+
+/* ── Jog ── */
 async function jog(axis, sign) {
+  if (!state.isConnected) return;
   const step = parseFloat($('jog-step').value) * sign;
-  await state.writer.write(`$J=G91 G21 ${axis}${step} F500\n`);
-  consoleLog(`→ Jog ${axis}${step > 0 ? '+' : ''}${step}`, 'tx');
+  const cmd  = '$J=G91 G21 ' + axis + step + ' F500';
+  consoleLog('→ ' + cmd, 'tx');
+  await writeRaw(cmd + '\n');
 }
 $('jog-xp').addEventListener('click', () => jog('X', +1));
 $('jog-xn').addEventListener('click', () => jog('X', -1));
@@ -665,7 +779,7 @@ $('jog-yn').addEventListener('click', () => jog('Y', -1));
 $('jog-zp').addEventListener('click', () => jog('Z', +1));
 $('jog-zn').addEventListener('click', () => jog('Z', -1));
 
-// Console input
+/* ── Serial console input ── */
 $('console-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-send-cmd').click(); });
 $('btn-send-cmd').addEventListener('click', () => {
   const v = $('console-input').value.trim();
@@ -674,3 +788,4 @@ $('btn-send-cmd').addEventListener('click', () => {
   $('console-input').value = '';
 });
 $('btn-clear-console').addEventListener('click', () => { $('console-out').innerHTML = ''; });
+
