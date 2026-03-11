@@ -464,12 +464,22 @@ $('results-back').addEventListener('click', () => {
 });
 
 $('btn-download').addEventListener('click', () => {
-  const name = $('gcode-filename').value.trim() || 'plotter_output';
-  const blob = new Blob([state.generatedGCode], { type:'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name}.gcode`;
-  a.click(); URL.revokeObjectURL(a.href);
+  if (!state.generatedGCode) {
+    alert('No G-code generated yet. Please process an image first.');
+    return;
+  }
+  const raw  = $('gcode-filename').value.trim() || 'plotter_output';
+  const name = raw.replace(/[^\w\-]/g, '_');
+  const blob = new Blob([state.generatedGCode], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = name + '.gcode';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  // Delay revoke so the browser can initiate the download
+  setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1500);
 });
 
 $('btn-to-controller').addEventListener('click', () => {
