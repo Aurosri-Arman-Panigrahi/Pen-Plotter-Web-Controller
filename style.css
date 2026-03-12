@@ -427,3 +427,28 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 /* ── Animations ── */
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
 @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-8px); } }
+
+/* ── Download Bar (Processing Pipeline Screen) ── */
+.dl-bar { margin-top: 16px; padding: 14px; background: rgba(0,229,255,0.04); border: 1px solid rgba(0,229,255,0.15); border-radius: 8px; }
+.dl-bar-label { font-size: 10px; letter-spacing: 2px; color: var(--cyan); margin-bottom: 10px; }
+.dl-btn-row, .manual-dl-row, .results-dl-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.dl-btn { padding: 6px 12px; background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 6px; color: var(--cyan); font-family: var(--font-mono); font-size: 11px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.dl-btn:hover:not(:disabled) { background: rgba(0,229,255,0.18); border-color: var(--cyan); transform: translateY(-1px); }
+.dl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.results-dl-row { margin-bottom: 12px; }
+
+/* ── Live Mission Monitor (Controller Screen) ── */
+.viz-card { border-color: rgba(0,229,255,0.25) !important; }
+.viz-card .ctrl-card-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.viz-dims { margin-left: auto; color: #aaa; font-size: 10px; }
+.viz-zstate { font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(0,255,136,0.3); color: #aaa; }
+.viz-wrap { position: relative; margin: 8px 0; border: 1px solid rgba(0,229,255,0.12); border-radius: 6px; overflow: hidden; background: #050d1a; }
+#live-visualizer { display: block; width: 100%; height: auto; max-height: 420px; }
+.viz-footer { display: flex; justify-content: space-between; font-size: 10px; color: #556; letter-spacing: 1px; padding: 4px 2px; }
+
+/* ── Hatch options (hidden by default) ── */
+.hatch-opt { transition: opacity 0.2s; }
+
+/* ── Console colors ── */
+.console-ok  { color: #00ff88; }
+.console-err { color: #ff6b6b; }

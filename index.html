@@ -155,11 +155,30 @@
           </div>
           <div class="control-group">
             <div class="group-label">STEP 2 › G-CODE SETTINGS</div>
+            <div class="ctrl-row"><label class="ctrl-label">Drawing Style</label>
+              <select id="draw-style" class="ctrl-select">
+                <option value="outline" selected>Outline (Contour)</option>
+                <option value="hatch">Hatch Fill</option>
+                <option value="both">Outline + Fill</option>
+              </select>
+            </div>
             <div class="ctrl-row"><label class="ctrl-label">Tool diameter (mm)</label><input type="number" id="tool-diam" value="0.3" min="0.1" max="5" step="0.1" class="ctrl-input"></div>
             <div class="ctrl-row"><label class="ctrl-label">Feed rate (mm/min)</label><input type="number" id="feed-rate" value="800" min="100" max="3000" step="100" class="ctrl-input"></div>
-            <div class="ctrl-row"><label class="ctrl-label">Safe Z — pen up (mm)</label><input type="number" id="safe-z" value="5" min="1" max="20" class="ctrl-input"></div>
-            <div class="ctrl-row"><label class="ctrl-label">Draw Z — pen down (mm)</label><input type="number" id="draw-z" value="0" min="-5" max="5" step="0.5" class="ctrl-input"></div>
+            <div class="ctrl-row hatch-opt"><label class="ctrl-label">Hatch angle (°)</label><input type="number" id="hatch-angle" value="45" min="0" max="90" step="5" class="ctrl-input"></div>
+            <div class="ctrl-row hatch-opt"><label class="ctrl-label">Hatch spacing (mm)</label><input type="number" id="hatch-spacing" value="0.5" min="0.3" max="3" step="0.1" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Safe Z — pen up (mm)</label><input type="number" id="safe-z" value="1.5" min="0.5" max="5" step="0.5" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Draw Z — pen down (mm)</label><input type="number" id="draw-z" value="0" min="-2" max="0" step="0.1" class="ctrl-input"></div>
+            <div class="ctrl-row"><label class="ctrl-label">Z feed rate (mm/min)</label><input type="number" id="z-feed" value="150" min="50" max="500" step="25" class="ctrl-input"></div>
             <button class="btn-step" id="btn-gen-gcode">▶ GENERATE G-CODE</button>
+          </div>
+          <div class="control-group">
+            <div class="group-label">STEP 3 › DOWNLOAD OUTPUTS</div>
+            <div class="manual-dl-row">
+              <button class="dl-btn" id="manual-dl-orig" disabled>🖼 Original PNG</button>
+              <button class="dl-btn" id="manual-dl-thresh" disabled>⬛ Thresholded PNG</button>
+              <button class="dl-btn" id="manual-dl-svg" disabled>◈ SVG</button>
+              <button class="dl-btn" id="manual-dl-gcode" disabled>⬇ G-Code</button>
+            </div>
           </div>
           <button class="btn-primary full-width" id="btn-manual-continue" disabled>→ PROCEED TO RESULTS</button>
         </div>
@@ -187,6 +206,16 @@
       <div class="processing-layout">
         <div class="timeline-panel">
           <div class="timeline" id="timeline"></div>
+          <div class="dl-bar" id="proc-dl-bar">
+            <div class="dl-bar-label">⬇ DOWNLOAD OUTPUTS</div>
+            <div class="dl-btn-row">
+              <button class="dl-btn" id="dl-orig-png" disabled>🖼 Original PNG</button>
+              <button class="dl-btn" id="dl-clean-png" disabled>✨ Clean BG PNG</button>
+              <button class="dl-btn" id="dl-thresh-png" disabled>⬛ Thresholded PNG</button>
+              <button class="dl-btn" id="dl-svg" disabled>◈ SVG Preview</button>
+              <button class="dl-btn" id="dl-gcode-proc" disabled>⬇ G-Code (.gcode)</button>
+            </div>
+          </div>
         </div>
         <div class="proc-preview-panel">
           <div class="panel-label">LIVE PREVIEW</div>
@@ -219,8 +248,12 @@
             <input type="text" id="gcode-filename" value="plotter_output" class="rename-input">
             <span class="rename-ext">.gcode</span>
           </div>
+          <div class="results-dl-row">
+            <button class="dl-btn" id="results-dl-png">🖼 PNG</button>
+            <button class="dl-btn" id="results-dl-svg">◈ SVG</button>
+            <button class="btn-secondary" id="btn-download">⬇ G-CODE (.gcode)</button>
+          </div>
           <div class="results-btns">
-            <button class="btn-secondary" id="btn-download">⬇ DOWNLOAD G-CODE</button>
             <button class="btn-primary" id="btn-to-controller">🎛 PROCEED TO CONTROLLER</button>
           </div>
           <div class="results-note">ⓘ Chrome / Edge required for Web Serial plotter controller</div>
@@ -276,6 +309,7 @@
               <span class="ctrl-label">Step</span>
               <select id="jog-step" class="ctrl-select">
                 <option value="0.1">0.1 mm</option>
+                <option value="0.5">0.5 mm</option>
                 <option value="1" selected>1 mm</option>
                 <option value="5">5 mm</option>
                 <option value="10">10 mm</option>
@@ -293,6 +327,21 @@
         </div>
         <!-- Right column -->
         <div class="ctrl-col ctrl-col-wide">
+          <!-- LIVE MISSION MONITOR -->
+          <div class="ctrl-card viz-card">
+            <div class="ctrl-card-label">
+              📡 LIVE MISSION MONITOR
+              <span class="viz-dims">70 × 70 mm</span>
+              <span class="viz-zstate" id="viz-zstate">⭕ PEN UP</span>
+            </div>
+            <div class="viz-wrap">
+              <canvas id="live-visualizer" width="420" height="420"></canvas>
+            </div>
+            <div class="viz-footer">
+              <span id="viz-elapsed">ELAPSED —</span>
+              <span id="viz-eta">ETA —</span>
+            </div>
+          </div>
           <div class="ctrl-card">
             <div class="ctrl-card-label">G-CODE STREAMING</div>
             <div class="stream-info">
