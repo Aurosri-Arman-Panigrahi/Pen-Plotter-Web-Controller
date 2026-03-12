@@ -1,4 +1,6 @@
+import os
 
+js_content = r"""
 const $ = id => document.getElementById(id);
 const state = {
   originalImage: null,
@@ -298,17 +300,6 @@ $('btn-auto-plot').onclick = () => startMission('auto');
 $('btn-manual-plot').onclick = () => startMission('manual');
 $('btn-proc-results').onclick = () => switchScreen('screen-results');
 
-// Manual Mode DLs
-$('manual-dl-orig').onclick = () => downloadBlob(state.originalImage.src, 'manual_orig.png', 'image/png');
-$('manual-dl-thresh').onclick = () => downloadBlob(state.thresholdedImage, 'manual_thresh.png', 'image/png');
-$('manual-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'manual_vector.svg', 'image/svg+xml');
-$('manual-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'manual_plotter.gcode', 'text/plain');
-
-// Results Screen DLs
-if($('results-dl-png')) $('results-dl-png').onclick = () => downloadBlob(state.thresholdedImage, 'final_plot.png', 'image/png');
-if($('results-dl-svg')) $('results-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'final_vector.svg', 'image/svg+xml');
-if($('results-dl-gcode')) $('results-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'final_plotter.gcode', 'text/plain');
-
 // ─────────────────────────────────────────────
 //  GRBL CONTROLLER (Restored)
 // ─────────────────────────────────────────────
@@ -384,11 +375,11 @@ function parseStatus(line) {
   const m = line.match(/MPos:([-\d.]+),([-\d.]+),([-\d.]+)/);
   if(m) {
     state.vizX = parseFloat(m[1]); state.vizY = parseFloat(m[2]); state.vizZ = parseFloat(m[3]);
-    if($('pos-x')) $('pos-x').textContent = state.vizX.toFixed(2);
-    if($('pos-y')) $('pos-y').textContent = state.vizY.toFixed(2);
-    if($('pos-z')) $('pos-z').textContent = state.vizZ.toFixed(2);
+    $('pos-x').textContent = state.vizX.toFixed(2);
+    $('pos-y').textContent = state.vizY.toFixed(2);
+    $('pos-z').textContent = state.vizZ.toFixed(2);
     const isDown = state.vizZ <= 0.5;
-    if($('viz-zstate')) $('viz-zstate').textContent = isDown ? '🟢 PEN DOWN' : '⭕ PEN UP';
+    $('viz-zstate').textContent = isDown ? '🟢 PEN DOWN' : '⭕ PEN UP';
   }
 }
 
@@ -463,3 +454,9 @@ function setConnected(c){
 }
 
 window.onload = () => buildTimeline();
+"""
+
+with open(r"c:\Users\ARMAN\Desktop\projects\kalinga\pen plotter\website\app.js", "w", encoding="utf-8") as f:
+    f.write(js_content)
+
+print("Done - app.js rebuilt with full engine and timeline downloads.")

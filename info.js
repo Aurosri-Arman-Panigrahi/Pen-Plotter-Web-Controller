@@ -29,9 +29,17 @@ const INFO_CONTENT = {
 <p style="margin-top:10px">3. In Arduino IDE: <strong>Sketch → Include Library → Add .ZIP Library</strong></p>
 <p>4. Open: <strong>File → Examples → grbl → grblUpload</strong></p>
 <p>5. Board: <strong>Arduino UNO</strong> · Port: your COM port → <strong>Upload</strong></p>
+<div class=\"troubleshoot-box\" style=\"background:rgba(255,100,100,0.1); border:1px solid rgba(255,100,100,0.3); padding:10px; margin:10px 0; border-radius:4px;\">
+  <p style=\"color:#ff6b6b; margin-top:0;\"><strong>⚠ FIXING COMPILATION ERRORS:</strong></p>
+  <p>If you see \"grbl_init not declared\" or \"expected initializer\", you are likely trying to call functions in a custom sketch. <strong>DO NOT</strong> write custom code. Instead:</p>
+  <ol>
+    <li>Go to <b>File > Examples > Grbl_28BYJ48 > grblUpload</b></li>
+    <li>Upload <b>ONLY</b> that file. It contains the complete logic.</li>
+  </ol>
+</div>
 <p>6. Open Serial Monitor at <strong>115200 baud</strong>. You should see:</p>
 <pre>Grbl 1.1f ['$' for help]</pre>
-<p>7. In the Plotter Controller screen, click <strong>"SEND GRBL SETTINGS"</strong> to configure all machine parameters in one click.</p>
+<p>7. In the Plotter Controller screen, click <strong>\"SEND GRBL SETTINGS\"</strong> to configure all machine parameters in one click.</p>
 
 <h3>RECOMMENDED GRBL $ SETTINGS</h3>
 <button class="copy-btn" onclick="copyGrblSettings()">COPY ALL</button>
