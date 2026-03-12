@@ -562,9 +562,21 @@ function jog(axis, dir) {
   const f = axis === 'Z' ? 100 : 800;  // Z slower for pen safety
   sendSerial(`$J=G91 G21 ${axis}${(dir*s).toFixed(3)} F${f}`);
 }
-$('jog-yp').onclick = () => jog('Y', 1); $('jog-yn').onclick = () => jog('Y',-1);
-$('jog-xp').onclick = () => jog('X', 1); $('jog-xn').onclick = () => jog('X',-1);
-$('jog-zp').onclick = () => jog('Z', 1); $('jog-zn').onclick = () => jog('Z',-1);
+bind('jog-yp', () => jog('Y', 1)); bind('jog-yn', () => jog('Y',-1));
+bind('jog-xp', () => jog('X', 1)); bind('jog-xn', () => jog('X',-1));
+bind('jog-zp', () => jog('Z', 1)); bind('jog-zn', () => jog('Z',-1));
+
+// Machine Controls
+bind('btn-pause', () => sendSerial('!'));
+bind('btn-resume', () => sendSerial('~'));
+bind('btn-stop', () => sendSerial('\\x18'));
+bind('btn-home', () => sendSerial('$H'));
+
+bind('btn-clear-console', () => { if($('console-out')) $('console-out').innerHTML = ''; });
+bind('btn-send-cmd', async () => {
+  const i = $('console-input');
+  if(i && i.value) { await sendSerial(i.value); i.value = ''; }
+});
 
 if($('btn-start-plot')) $('btn-start-plot').onclick = async () => {
   if(state.isPlotting) { state.isPlotting = false; return; }
