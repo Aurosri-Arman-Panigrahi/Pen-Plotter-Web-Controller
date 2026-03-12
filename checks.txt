@@ -1,0 +1,26 @@
+77: btn.onclick = () => {
+87: btn.onclick = () => downloadBlob(state.thresholdedImage, 'threshold_mission.png', 'image/png');
+94: btn.onclick = () => downloadBlob(state.svgPreview, 'vector_mission.svg', 'image/svg+xml');
+101: btn.onclick = () => downloadBlob(state.generatedGCode, 'plotter_mission.gcode', 'text/plain');
+288: $('nav-home').onclick = () => switchScreen('screen-landing');
+289: $('nav-processing').onclick = () => switchScreen('screen-processing');
+290: $('nav-controller').onclick = () => switchScreen('screen-controller');
+291: $('nav-manual').onclick = () => switchScreen('screen-manual');
+309: $('btn-auto-plot').onclick = () => startMission('auto');
+310: $('btn-manual-plot').onclick = () => startMission('manual');
+311: $('btn-proc-results').onclick = () => switchScreen('screen-results');
+314: $('manual-dl-orig').onclick = () => downloadBlob(state.originalImage.src, 'manual_orig.png', 'image/png');
+315: $('manual-dl-thresh').onclick = () => downloadBlob(state.thresholdedImage, 'manual_thresh.png', 'image/png');
+316: $('manual-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'manual_vector.svg', 'image/svg+xml');
+317: $('manual-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'manual_plotter.gcode', 'text/plain');
+320: if($('results-dl-png')) $('results-dl-png').onclick = () => downloadBlob(state.thresholdedImage, 'final_plot.png', 'image/png');
+321: if($('results-dl-svg')) $('results-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'final_vector.svg', 'image/svg+xml');
+322: if($('results-dl-gcode')) $('results-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'final_plotter.gcode', 'text/plain');
+418: if($('btn-disconnect')) $('btn-disconnect').onclick = async () => {
+431: if($('btn-connect-usb')) $('btn-connect-usb').onclick = async () => {
+461: if($('btn-connect-bt')) $('btn-connect-bt').onclick = async () => {
+494: if($('btn-connect-wifi')) $('btn-connect-wifi').onclick = () => {
+539: $('jog-yp').onclick = () => jog('Y', 1); $('jog-yn').onclick = () => jog('Y',-1);
+540: $('jog-xp').onclick = () => jog('X', 1); $('jog-xn').onclick = () => jog('X',-1);
+541: $('jog-zp').onclick = () => jog('Z', 1); $('jog-zn').onclick = () => jog('Z',-1);
+543: $('btn-start-plot').onclick = async () => {

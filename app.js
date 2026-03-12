@@ -285,10 +285,10 @@ function switchScreen(id) {
   if($(navId)) $(navId).classList.add('active');
 }
 
-$('nav-home').onclick = () => switchScreen('screen-landing');
-$('nav-processing').onclick = () => switchScreen('screen-processing');
-$('nav-controller').onclick = () => switchScreen('screen-controller');
-$('nav-manual').onclick = () => switchScreen('screen-manual');
+// $('nav-home').onclick = () => switchScreen('screen-landing');
+// $('nav-processing').onclick = () => switchScreen('screen-processing');
+// $('nav-controller').onclick = () => switchScreen('screen-controller');
+// $('nav-manual').onclick = () => switchScreen('screen-manual');
 
 $('file-upload').onchange = e => {
   const file = e.target.files[0];
@@ -319,7 +319,7 @@ $('manual-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'manual_
 // Results Screen DLs
 if($('results-dl-png')) $('results-dl-png').onclick = () => downloadBlob(state.thresholdedImage, 'final_plot.png', 'image/png');
 if($('results-dl-svg')) $('results-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'final_vector.svg', 'image/svg+xml');
-if($('results-dl-gcode')) $('results-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'final_plotter.gcode', 'text/plain');
+// if($('results-dl-gcode')) $('results-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'final_plotter.gcode', 'text/plain');
 
 // ─────────────────────────────────────────────
 //  GRBL CONTROLLER (Wired + Wireless)
@@ -540,7 +540,7 @@ $('jog-yp').onclick = () => jog('Y', 1); $('jog-yn').onclick = () => jog('Y',-1)
 $('jog-xp').onclick = () => jog('X', 1); $('jog-xn').onclick = () => jog('X',-1);
 $('jog-zp').onclick = () => jog('Z', 1); $('jog-zn').onclick = () => jog('Z',-1);
 
-$('btn-start-plot').onclick = async () => {
+if($('btn-start-plot')) $('btn-start-plot').onclick = async () => {
   if(state.isPlotting) { state.isPlotting = false; return; }
   state.isPlotting = true;
   $('btn-start-plot').textContent = '⏹ STOP';
@@ -597,9 +597,6 @@ function renderLoop() {
   vizRaf = requestAnimationFrame(renderLoop);
 }
 
-function setConnected(c){ 
-  $('btn-connect').textContent = c? '⎋ DISCONNECT' : '⚡ CONNECT TO PLOTTER';
-  document.querySelectorAll('.ctrl-card button').forEach(b => { if(b.id!=='btn-connect') b.disabled = !c; });
-}
+// duplicate setConnected removed
 
 window.onload = () => buildTimeline();
