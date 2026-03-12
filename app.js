@@ -69,22 +69,35 @@ function completeStep(id, type) {
     el.classList.add('done');
     const actions = $('tl-actions-' + id);
     if(actions && !actions.innerHTML) {
-      if(type === 'CLEAN') {
+      if(type === 'ORIG') {
         const btn = document.createElement('button');
         btn.className = 'tl-dl-btn';
-        btn.textContent = '⬇ PNG';
-        btn.onclick = () => downloadBlob(state.cleanImage, 'cleaned_mission.png', 'image/png');
+        btn.textContent = '⬇ Orig. PNG';
+        btn.title = 'Download Original Image';
+        btn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = state.originalImage.src; a.download = 'original_mission.png'; a.click();
+        };
+        actions.appendChild(btn);
+      } else if(type === 'CLEAN') {
+        const btn = document.createElement('button');
+        btn.className = 'tl-dl-btn';
+        btn.textContent = '⬇ Thresh. PNG';
+        btn.title = 'Download Thresholded Image';
+        btn.onclick = () => downloadBlob(state.thresholdedImage, 'threshold_mission.png', 'image/png');
         actions.appendChild(btn);
       } else if(type === 'SVG') {
         const btn = document.createElement('button');
         btn.className = 'tl-dl-btn';
         btn.textContent = '⬇ SVG';
+        btn.title = 'Download Vector Preview';
         btn.onclick = () => downloadBlob(state.svgPreview, 'vector_mission.svg', 'image/svg+xml');
         actions.appendChild(btn);
       } else if(type === 'GCODE') {
         const btn = document.createElement('button');
         btn.className = 'tl-dl-btn';
-        btn.textContent = '⬇ GCO';
+        btn.textContent = '⬇ G-Code';
+        btn.title = 'Download G-Code for Plotter';
         btn.onclick = () => downloadBlob(state.generatedGCode, 'plotter_mission.gcode', 'text/plain');
         actions.appendChild(btn);
       }
@@ -223,21 +236,20 @@ async function startMission(mode) {
   switchScreen('screen-processing');
   $('proc-mode-badge').textContent = mode.toUpperCase();
   
-  const safeZ = parseFloat($('safe-z')?.value) || 1.5;
-  const drawZ = parseFloat($('draw-z')?.value) || 0;
-  const speed = parseInt($('feed-rate')?.value) || 800;
-  const zSpeed = parseInt($('z-feed')?.value) || 150;
-  
-  // 1. INIT
-  activateStep('init');
-  await new Promise(r => setTimeout(r, 800));
-  completeStep('init');
+  const safeZ  = parseFloat($('safe-z')?.value)    || 0.8;
+  const drawZ  = parseFloat($('draw-z')?.value)    || 0.0;
+  const speed  = parseInt($('feed-rate')?.value)   || 800;
+  const zSpeed = parseInt($('z-feed')?.value)      || 100;
 
-  // 2. VISION (Trace)
+  // 1. INIT — with Original PNG download
+  activateStep('init');
+  await new Promise(r => setTimeout(r, 600));
+  completeStep('init', 'ORIG');
+
+  // 2. VISION — Threshold + contour trace
   activateStep('vision');
   const binary = await processImage(state.originalImage, 128);
-  state.cleanImage = state.thresholdedImage; // Simulating "clean" for now
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise(r => setTimeout(r, 800));
   completeStep('vision', 'CLEAN');
 
   // 3. VECTOR (Gen)
@@ -384,17 +396,21 @@ function parseStatus(line) {
   const m = line.match(/MPos:([-\d.]+),([-\d.]+),([-\d.]+)/);
   if(m) {
     state.vizX = parseFloat(m[1]); state.vizY = parseFloat(m[2]); state.vizZ = parseFloat(m[3]);
-    if($('pos-x')) $('pos-x').textContent = state.vizX.toFixed(2);
-    if($('pos-y')) $('pos-y').textContent = state.vizY.toFixed(2);
-    if($('pos-z')) $('pos-z').textContent = state.vizZ.toFixed(2);
-    const isDown = state.vizZ <= 0.5;
-    if($('viz-zstate')) $('viz-zstate').textContent = isDown ? '🟢 PEN DOWN' : '⭕ PEN UP';
+    if($('pos-x')) $('pos-x').textContent = state.vizX.toFixed(3);
+    if($('pos-y')) $('pos-y').textContent = state.vizY.toFixed(3);
+    if($('pos-z')) $('pos-z').textContent = state.vizZ.toFixed(3);
+    const isDown = state.vizZ <= 0.4;  // threshold matches safeZ=0.8mm
+    if($('viz-zstate')) {
+      $('viz-zstate').textContent = isDown ? '🟢 PEN DOWN' : '⭕ PEN UP';
+      $('viz-zstate').style.color = isDown ? '#00ff88' : '#888';
+    }
   }
 }
 
 function jog(axis, dir) {
-  const s = $('jog-step').value;
-  sendSerial(`$J=G91 G21 ${axis}${dir*s} F${axis==='Z'?150:800}`);
+  const s = parseFloat($('jog-step').value) || (axis === 'Z' ? 0.1 : 1);
+  const f = axis === 'Z' ? 100 : 800;  // Z slower for pen safety
+  sendSerial(`$J=G91 G21 ${axis}${(dir*s).toFixed(3)} F${f}`);
 }
 $('jog-yp').onclick = () => jog('Y', 1); $('jog-yn').onclick = () => jog('Y',-1);
 $('jog-xp').onclick = () => jog('X', 1); $('jog-xn').onclick = () => jog('X',-1);
