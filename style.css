@@ -459,3 +459,62 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .tl-step.done .tl-dl-btn { opacity: 1; pointer-events: auto; }
 .tl-dl-btn:hover { background: rgba(0,255,136,0.1); border-color: #00ff88; boxShadow: 0 0 10px rgba(0,255,136,0.2); }
 
+
+/* --- WIRELESS CONNECTION BUTTONS --- */
+.conn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  width: 100%;
+}
+.btn-connect-bt {
+  background: rgba(0, 100, 255, 0.1);
+  border-color: rgba(0, 150, 255, 0.5);
+  color: #55aaff;
+}
+.btn-connect-bt:hover:not(:disabled) {
+  background: rgba(0, 100, 255, 0.2);
+  border-color: #55aaff;
+}
+.btn-connect-bt.active {
+  background: rgba(0, 100, 255, 0.3);
+  border-color: #88ccff;
+  color: #fff;
+}
+.btn-connect-wifi {
+  background: rgba(200, 100, 255, 0.1);
+  border-color: rgba(200, 100, 255, 0.5);
+  color: #cc88ff;
+}
+.btn-connect-wifi:hover:not(:disabled) {
+  background: rgba(200, 100, 255, 0.2);
+  border-color: #cc88ff;
+}
+.btn-connect-wifi.active {
+  background: rgba(200, 100, 255, 0.3);
+  border-color: #eebbff;
+  color: #fff;
+}
+.disconnect-row {
+  margin-top: 10px;
+  width: 100%;
+}
+.btn-disconnect {
+  width: 100%;
+  padding: 10px;
+  background: rgba(255, 50, 50, 0.15);
+  border: 1px solid rgba(255, 50, 50, 0.6);
+  color: #ff6666;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-disconnect:hover {
+  background: rgba(255, 50, 50, 0.3);
+  border-color: #ff3333;
+  color: #fff;
+}

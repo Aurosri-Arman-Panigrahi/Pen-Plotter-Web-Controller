@@ -279,9 +279,16 @@
         <!-- Left column -->
         <div class="ctrl-col">
           <div class="ctrl-card">
-            <div class="ctrl-card-label">CONNECTION</div>
-            <button class="btn-connect" id="btn-connect">⚡ CONNECT TO PLOTTER</button>
-            <button class="btn-secondary-sm" id="btn-send-settings" disabled>⚙ SEND GRBL SETTINGS</button>
+            <div class="ctrl-card-label">CONNECTION MODE</div>
+            <div class="conn-grid" id="conn-grid">
+              <button class="btn-connect" id="btn-connect-usb" title="Connect via USB cable">🔌 USB (Serial)</button>
+              <button class="btn-connect btn-connect-bt" id="btn-connect-bt" title="Connect via Web Bluetooth">🔵 Bluetooth</button>
+              <button class="btn-connect btn-connect-wifi" id="btn-connect-wifi" title="Connect via WebSockets">📶 Wi-Fi</button>
+            </div>
+            <div class="disconnect-row hidden" id="disconnect-row">
+              <button class="btn-disconnect" id="btn-disconnect">✕ DISCONNECT</button>
+            </div>
+            <button class="btn-secondary-sm" id="btn-send-settings" disabled style="margin-top: 10px;">⚙ SEND GRBL SETTINGS</button>
           </div>
           <div class="ctrl-card">
             <div class="ctrl-card-label">MACHINE CONTROLS</div>
@@ -378,6 +385,7 @@
       </div>
       <div class="info-tabs">
         <button class="itab active" data-itab="arduino">ARDUINO SETUP</button>
+        <button class="itab" data-itab="wireless">WIRELESS SETUP</button>
         <button class="itab" data-itab="wiring">WIRING</button>
         <button class="itab" data-itab="arduino-code">ARDUINO CODE</button>
         <button class="itab" data-itab="gcode-ref">G-CODE REF</button>

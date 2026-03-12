@@ -322,9 +322,13 @@ if($('results-dl-svg')) $('results-dl-svg').onclick = () => downloadBlob(state.s
 if($('results-dl-gcode')) $('results-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'final_plotter.gcode', 'text/plain');
 
 // ─────────────────────────────────────────────
-//  GRBL CONTROLLER (Restored)
+//  GRBL CONTROLLER (Wired + Wireless)
 // ─────────────────────────────────────────────
-let serialPort=null, serialWriter=null, serialReader=null, _okResolve=null, _statusPoller=null;
+let connMode = null; // 'usb', 'bt', 'wifi'
+let serialPort=null, serialWriter=null, serialReader=null;
+let btDevice=null, btCharacteristic=null;
+let wsConn=null;
+let _okResolve=null, _statusPoller=null;
 
 function loadGCodeIntoController() {
   if(!state.generatedGCode) return;
@@ -348,12 +352,22 @@ function logConsole(msg, cls='') {
   d.appendChild(el); d.scrollTop = d.scrollHeight;
 }
 
-// ... Additional GRBL and Viz Logic here ...
-// Since I need to fit in 800 lines, I will provide the core event loops clearly.
-
 async function sendSerial(cmd) {
-  if(!serialWriter) return 'no-port';
-  serialWriter.write(new TextEncoder().encode(cmd + '\n'));
+  if(!connMode) return 'no-conn';
+  const payload = cmd + '\n';
+  
+  try {
+    if(connMode === 'usb' && serialWriter) {
+      await serialWriter.write(new TextEncoder().encode(payload));
+    } else if(connMode === 'bt' && btCharacteristic) {
+      await btCharacteristic.writeValue(new TextEncoder().encode(payload));
+    } else if(connMode === 'wifi' && wsConn && wsConn.readyState === WebSocket.OPEN) {
+      wsConn.send(payload);
+    } else {
+      return 'err';
+    }
+  } catch(e) { logConsole('Send Error: ' + e.message, 'console-err'); return 'err'; }
+
   logConsole('→ ' + cmd);
   return new Promise(res => {
     _okResolve = res;
@@ -361,36 +375,146 @@ async function sendSerial(cmd) {
   });
 }
 
-$('btn-connect').onclick = async () => {
+function handleIncomingData(str) {
+  let lines = str.split('\n');
+  lines.forEach(l => {
+    const line = l.trim();
+    if(!line) return;
+    if(line === 'ok' && _okResolve) { _okResolve('ok'); _okResolve = null; }
+    if(line.startsWith('<')) parseStatus(line);
+    logConsole('← ' + line);
+  });
+}
+
+// ── CONNECT HANDLERS ──
+
+function setConnected(mode) {
+  connMode = mode;
+  const isConn = !!mode;
+  if($('conn-grid')) $('conn-grid').style.display = isConn ? 'none' : 'grid';
+  if($('disconnect-row')) $('disconnect-row').classList.toggle('hidden', !isConn);
+  
+  const cst = $('conn-status');
+  if(cst) {
+    if(isConn) {
+      const names = {usb: 'USB SERIAL', bt:'BLUETOOTH', wifi:'WI-FI'};
+      cst.innerHTML = `<span class="status-dot" style="background:#00ff88;box-shadow:0 0 8px #00ff88"></span><span class="status-text color-cyan">CONNECTED: ${names[mode]}</span>`;
+    } else {
+      cst.innerHTML = `<span class="status-dot"></span><span class="status-text">DISCONNECTED</span>`;
+    }
+  }
+  
+  document.querySelectorAll('.ctrl-card button').forEach(b => { 
+    if(!b.id.startsWith('btn-connect') && b.id !== 'btn-disconnect') b.disabled = !isConn; 
+  });
+  
+  if(isConn) {
+    _statusPoller = setInterval(() => { if(!state.isPlotting) sendSerial('?'); }, 800);
+  } else {
+    if(_statusPoller) { clearInterval(_statusPoller); _statusPoller = null; }
+  }
+}
+
+if($('btn-disconnect')) $('btn-disconnect').onclick = async () => {
+  try {
+    if(connMode === 'usb' && serialPort) await serialPort.close();
+    if(connMode === 'bt' && btDevice && btDevice.gatt.connected) btDevice.gatt.disconnect();
+    if(connMode === 'wifi' && wsConn) wsConn.close();
+  } catch(e){}
+  serialPort=null; serialWriter=null; serialReader=null;
+  btDevice=null; btCharacteristic=null; wsConn=null;
+  setConnected(null);
+  logConsole('Disconnected', 'console-err');
+};
+
+// 1. USB SERIAL
+if($('btn-connect-usb')) $('btn-connect-usb').onclick = async () => {
   try {
     serialPort = await navigator.serial.requestPort();
     await serialPort.open({ baudRate: 115200 });
     serialWriter = serialPort.writable.getWriter();
     serialReader = serialPort.readable.getReader();
-    readLoop();
-    setConnected(true);
-    logConsole('✓ CONNECTED', 'console-ok');
-    _statusPoller = setInterval(() => { if(!state.isPlotting) sendSerial('?'); }, 800);
-  } catch(e) { logConsole('Error: ' + e.message, 'console-err'); }
+    readLoopUSB();
+    setConnected('usb');
+    logConsole('✓ USB CONNECTED', 'console-ok');
+  } catch(e) { logConsole('USB Error: ' + e.message, 'console-err'); }
 };
 
-async function readLoop() {
+async function readLoopUSB() {
   const dec = new TextDecoder();
   let part = '';
-  while(true) {
-    const {value, done} = await serialReader.read();
-    if(done) break;
-    part += dec.decode(value);
-    let nl;
-    while((nl = part.indexOf('\n')) >= 0) {
-      const line = part.slice(0, nl).trim();
-      part = part.slice(nl+1);
-      if(line === 'ok' && _okResolve) { _okResolve('ok'); _okResolve = null; }
-      if(line.startsWith('<')) parseStatus(line);
-      logConsole('← ' + line);
-    }
+  while(serialPort && serialPort.readable) {
+    try {
+      const {value, done} = await serialReader.read();
+      if(done) break;
+      part += dec.decode(value);
+      let nl;
+      while((nl = part.indexOf('\n')) >= 0) {
+        handleIncomingData(part.slice(0, nl));
+        part = part.slice(nl+1);
+      }
+    } catch(e){ break; }
   }
 }
+
+// 2. BLUETOOTH
+if($('btn-connect-bt')) $('btn-connect-bt').onclick = async () => {
+  try {
+    logConsole('Requesting Bluetooth Device...');
+    btDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb'] // HM-10 / generic serial service
+    });
+    logConsole('Connecting to GATT Server...');
+    const server = await btDevice.gatt.connect();
+    const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+    btCharacteristic = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+    await btCharacteristic.startNotifications();
+    
+    let part = '';
+    const dec = new TextDecoder();
+    btCharacteristic.addEventListener('characteristicvaluechanged', e => {
+      part += dec.decode(e.target.value);
+      let nl;
+      while((nl = part.indexOf('\n')) >= 0) {
+        handleIncomingData(part.slice(0, nl));
+        part = part.slice(nl+1);
+      }
+    });
+    
+    btDevice.addEventListener('gattserverdisconnected', () => {
+        setConnected(null); logConsole('Bluetooth Disconnected', 'console-err');
+    });
+    setConnected('bt');
+    logConsole('✓ BLUETOOTH CONNECTED', 'console-ok');
+  } catch(e) { logConsole('Bluetooth Error: ' + e.message, 'console-err'); }
+};
+
+// 3. WI-FI
+if($('btn-connect-wifi')) $('btn-connect-wifi').onclick = () => {
+  const ip = prompt('Enter Plotter IP Address (e.g. 192.168.1.100):', '192.168.1.');
+  if(!ip) return;
+  const wsUrl = ip.startsWith('ws://') ? ip : `ws://${ip}:81`;
+  logConsole('Connecting to ' + wsUrl + '...');
+  
+  wsConn = new WebSocket(wsUrl);
+  let part = '';
+  
+  wsConn.onopen = () => {
+    setConnected('wifi');
+    logConsole('✓ WI-FI CONNECTED', 'console-ok');
+  };
+  wsConn.onmessage = (e) => {
+    part += e.data;
+    let nl;
+    while((nl = part.indexOf('\n')) >= 0) {
+      handleIncomingData(part.slice(0, nl));
+      part = part.slice(nl+1);
+    }
+  };
+  wsConn.onerror = (e) => logConsole('Wi-Fi Error: Check IP or network', 'console-err');
+  wsConn.onclose = () => { setConnected(null); logConsole('Wi-Fi Disconnected', 'console-err'); };
+};
 
 function parseStatus(line) {
   const m = line.match(/MPos:([-\d.]+),([-\d.]+),([-\d.]+)/);
