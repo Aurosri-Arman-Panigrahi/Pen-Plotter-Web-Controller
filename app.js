@@ -1,5 +1,6 @@
 
 const $ = id => document.getElementById(id);
+const bind = (id, fn) => { if($(id)) $(id).onclick = fn; };
 const state = {
   originalImage: null,
   cleanImage: null,
@@ -269,7 +270,10 @@ async function startMission(mode) {
   // 5. READY
   activateStep('ready');
   state.isProcessing = false;
-  $('btn-proc-results').disabled = false;
+  if($('btn-proc-results')) {
+    $('btn-proc-results').classList.remove('hidden');
+    $('btn-proc-results').disabled = false;
+  }
   loadGCodeIntoController();
 }
 
@@ -280,35 +284,57 @@ async function startMission(mode) {
 function switchScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  $(id).classList.add('active');
+  if($(id)) $(id).classList.add('active');
   const navId = 'nav-' + id.split('-')[1];
   if($(navId)) $(navId).classList.add('active');
 }
 
-// $('nav-home').onclick = () => switchScreen('screen-landing');
-// $('nav-processing').onclick = () => switchScreen('screen-processing');
-// $('nav-controller').onclick = () => switchScreen('screen-controller');
-// $('nav-manual').onclick = () => switchScreen('screen-manual');
+// Navigation
+bind('nav-home',    () => switchScreen('screen-mode'));
+bind('nav-upload',  () => switchScreen('screen-upload'));
+bind('nav-editor',  () => switchScreen('screen-editor'));
+bind('nav-manual',  () => switchScreen('screen-manual'));
+bind('nav-process', () => switchScreen('screen-processing'));
+bind('nav-results', () => switchScreen('screen-results'));
+bind('nav-ctrl',    () => switchScreen('screen-controller'));
 
-$('file-upload').onchange = e => {
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    state.originalImage = new Image();
-    state.originalImage.onload = () => {
-       $('landing-preview').src = ev.target.result;
-       $('btn-auto-plot').disabled = false;
-       $('btn-manual-plot').disabled = false;
-    };
-    state.originalImage.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+// Mode Selection
+const initMode = (m) => {
+  state.missionMode = m; // store mode if needed
+  switchScreen('screen-upload');
+  if($('upload-mode-badge')) $('upload-mode-badge').textContent = m.toUpperCase();
 };
+bind('btn-automated', () => initMode('automated'));
+bind('btn-semi',      () => initMode('semi'));
+bind('btn-manual',    () => initMode('manual'));
 
-$('btn-auto-plot').onclick = () => startMission('auto');
-$('btn-manual-plot').onclick = () => startMission('manual');
-$('btn-proc-results').onclick = () => switchScreen('screen-results');
+bind('file-input', e => { /* change event handled below */ });
+// The file upload uses onchange, not onclick. Let's fix that.
+if($('file-input')) {
+  $('file-input').onchange = e => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      state.originalImage = new Image();
+      state.originalImage.onload = () => {
+         if($('preview-img')) $('preview-img').src = ev.target.result;
+         if($('preview-container')) $('preview-container').classList.remove('hidden');
+         if($('btn-proceed-upload')) $('btn-proceed-upload').disabled = false;
+      };
+      state.originalImage.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+}
+
+bind('btn-proceed-upload', () => {
+  if(state.missionMode === 'automated') startMission('auto');
+  else if(state.missionMode === 'semi') switchScreen('screen-editor');
+  else switchScreen('screen-manual');
+});
+
+bind('btn-proc-results', () => switchScreen('screen-results'));
 
 // Manual Mode DLs
 $('manual-dl-orig').onclick = () => downloadBlob(state.originalImage.src, 'manual_orig.png', 'image/png');

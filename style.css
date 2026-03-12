@@ -518,3 +518,5 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border-color: #ff3333;
   color: #fff;
 }
+
+.hidden { display: none !important; }
