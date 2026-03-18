@@ -219,12 +219,182 @@ function buildGCode(strokes, safeZ, drawZ, feed, zFeed) {
   return gc.join('\n');
 }
 
+// Build G-code with NO Z-axis movement (pure X/Y only)
+function buildNoZGCode(strokes, feed) {
+  const gc = [`G21`, `G90`, `F${feed}`];
+  strokes.forEach(s => {
+    if(s.length < 2) return;
+    const start = s[0];
+    gc.push(`G0 X${(start.x/10).toFixed(2)} Y${(start.y/10).toFixed(2)}`);
+    for(let i=1; i<s.length; i++) {
+      gc.push(`G1 X${(s[i].x/10).toFixed(2)} Y${(s[i].y/10).toFixed(2)}`);
+    }
+  });
+  gc.push(`G0 X0 Y0`);
+  return gc.join('\n');
+}
+
 function buildSVG(strokes) {
   const paths = strokes.map(s => `M ${s.map(p => `${p.x},${p.y}`).join(' L ')}`).join(' ');
   return `<svg viewBox="0 0 ${INTERNAL} ${INTERNAL}" xmlns="http://www.w3.org/2000/svg">
     <path d="${paths}" fill="none" stroke="cyan" stroke-width="1.5" />
   </svg>`;
 }
+
+// ─────────────────────────────────────────────
+//  GROQ AI G-CODE GENERATOR
+// ─────────────────────────────────────────────
+
+const GROQ_MODEL = 'llama-3.1-8b-instant';
+const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_SYSTEM_PROMPT = `You are a precise CNC G-code generator for a pen plotter with a 70x70mm work area.
+Rules you MUST follow:
+- Output ONLY raw G-code lines, no explanations, no markdown, no code fences.
+- Use millimetres (G21) and absolute positioning (G90).
+- Include G21 and G90 at the start.
+- All X,Y coordinates must be between 0 and 70.
+- Use G0 for rapid travel (pen up), G1 for drawing moves.
+- For pen UP: G1 Z{safeZ} F{zFeed}
+- For pen DOWN: G1 Z{drawZ} F{zFeed}
+- For drawing moves: G1 X## Y## F{feed}
+- End with G0 X0 Y0 to return home.
+- Round all coordinates to 2 decimal places.
+- Generate complete, ready-to-run G-code that can be streamed directly to GRBL.`;
+
+async function callGroqAI(userPrompt, apiKey) {
+  const safeZ = parseFloat($('ai-safe-z')?.value) || 0.8;
+  const drawZ = parseFloat($('ai-draw-z')?.value) || 0.0;
+  const feed  = parseInt($('ai-feed')?.value) || 800;
+  const zFeed = 100;
+
+  const systemPrompt = GROQ_SYSTEM_PROMPT
+    .replace(/{safeZ}/g, safeZ)
+    .replace(/{drawZ}/g, drawZ)
+    .replace(/{feed}/g, feed)
+    .replace(/{zFeed}/g, zFeed);
+
+  const fullPrompt = `${userPrompt}\n\nWork area: 70x70mm. Feed: ${feed}mm/min. Safe Z: ${safeZ}mm. Draw Z: ${drawZ}mm. Z feed: ${zFeed}mm/min. Output ONLY G-code lines.`;
+
+  const resp = await fetch(GROQ_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: fullPrompt }
+      ],
+      temperature: 0.05,
+      max_tokens: 2048
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content?.trim() || '';
+}
+
+// Strip any markdown code fences the model might have added despite instructions
+function cleanGCode(raw) {
+  return raw
+    .replace(/```[\s\S]*?```/g, m => m.replace(/```[^\n]*\n?/g, '').replace(/```/g, ''))
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#') && !l.startsWith('//'))
+    .join('\n');
+}
+
+// ─────────────────────────────────────────────
+//  AI SCREEN EVENT HANDLERS
+// ─────────────────────────────────────────────
+
+// Load saved API key
+(function loadSavedKey() {
+  const saved = localStorage.getItem('groq_api_key');
+  if (saved && $('ai-api-key')) {
+    $('ai-api-key').value = saved;
+    if ($('ai-key-status')) $('ai-key-status').textContent = '✓ Key loaded from storage';
+    if ($('ai-setup-banner')) $('ai-setup-banner').classList.add('hidden');
+  }
+})();
+
+bind('ai-key-save', () => {
+  const key = $('ai-api-key')?.value?.trim();
+  if (!key) return;
+  localStorage.setItem('groq_api_key', key);
+  if ($('ai-key-status')) { $('ai-key-status').textContent = '✓ API key saved to browser storage'; $('ai-key-status').style.color = 'var(--cyan)'; }
+  if ($('ai-setup-banner')) $('ai-setup-banner').classList.add('hidden');
+});
+
+bind('ai-key-toggle', () => {
+  const inp = $('ai-api-key');
+  if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+
+bind('ai-banner-dismiss', () => {
+  if ($('ai-setup-banner')) $('ai-setup-banner').classList.add('hidden');
+});
+
+// Example chips
+document.querySelectorAll('.ai-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    if ($('ai-prompt-input')) $('ai-prompt-input').value = chip.dataset.prompt;
+  });
+});
+
+bind('btn-ai-generate', async () => {
+  const key    = $('ai-api-key')?.value?.trim();
+  const prompt = $('ai-prompt-input')?.value?.trim();
+
+  if (!key)    { alert('Please enter your Groq API key first.'); return; }
+  if (!prompt) { alert('Please describe what you want to draw.'); return; }
+
+  // UI: show generating state
+  if ($('ai-status-badge'))  { $('ai-status-badge').classList.remove('hidden'); }
+  if ($('ai-action-row'))    { $('ai-action-row').classList.add('hidden'); }
+  if ($('ai-output-info'))   { $('ai-output-info').classList.add('hidden'); }
+  if ($('ai-gcode-out'))     { $('ai-gcode-out').value = '⟳ Sending request to Groq AI…'; }
+  if ($('btn-ai-generate'))  { $('btn-ai-generate').disabled = true; }
+
+  try {
+    const raw    = await callGroqAI(prompt, key);
+    const gcode  = cleanGCode(raw);
+    const lines  = gcode.split('\n').filter(Boolean);
+
+    if ($('ai-gcode-out'))   { $('ai-gcode-out').value = gcode; }
+    if ($('ai-line-count'))  { $('ai-line-count').textContent = `${lines.length} lines`; }
+    if ($('ai-output-info')) { $('ai-output-info').classList.remove('hidden'); }
+    if ($('ai-action-row'))  { $('ai-action-row').classList.remove('hidden'); }
+
+    // Store for download / controller
+    state.generatedGCode = gcode;
+    state.gcodeLines = lines;
+
+  } catch(e) {
+    if ($('ai-gcode-out')) $('ai-gcode-out').value = `ERROR: ${e.message}\n\nMake sure your API key is valid and you have internet access.`;
+  } finally {
+    if ($('ai-status-badge')) $('ai-status-badge').classList.add('hidden');
+    if ($('btn-ai-generate')) $('btn-ai-generate').disabled = false;
+  }
+});
+
+bind('btn-ai-retry', () => { if ($('btn-ai-generate')) $('btn-ai-generate').click(); });
+
+bind('ai-dl-gcode', () => {
+  if (state.generatedGCode) downloadBlob(state.generatedGCode, 'ai_generated.gcode', 'text/plain');
+});
+
+bind('btn-ai-proceed', () => {
+  if (!state.generatedGCode) { alert('Generate G-code first.'); return; }
+  loadGCodeIntoController();
+  switchScreen('screen-controller');
+});
 
 // ─────────────────────────────────────────────
 //  PIPELINE ORCHESTRATOR
@@ -235,7 +405,7 @@ async function startMission(mode) {
   state.isProcessing = true;
   buildTimeline();
   switchScreen('screen-processing');
-  $('proc-mode-badge').textContent = mode.toUpperCase();
+  if($('proc-mode-badge')) $('proc-mode-badge').textContent = mode.toUpperCase();
   
   const safeZ  = parseFloat($('safe-z')?.value)    || 0.8;
   const drawZ  = parseFloat($('draw-z')?.value)    || 0.0;
@@ -256,15 +426,19 @@ async function startMission(mode) {
   // 3. VECTOR (Gen)
   activateStep('vector');
   const contours = traceContours(binary);
-  const hatch = (mode==='manual' && $('draw-style').value !== 'outline') ? 
+  const hatch = (mode==='manual' && $('draw-style') && $('draw-style').value !== 'outline') ? 
                 generateHatch(binary, parseFloat($('hatch-spacing').value), parseInt($('hatch-angle').value)) : [];
   const strokes = contours.concat(hatch);
   state.svgPreview = buildSVG(strokes);
   completeStep('vector', 'SVG');
 
-  // 4. EMIT
+  // 4. EMIT — use No-Z builder if mode is noz
   activateStep('emit');
-  state.generatedGCode = buildGCode(strokes, safeZ, drawZ, speed, zSpeed);
+  if (mode === 'noz') {
+    state.generatedGCode = buildNoZGCode(strokes, speed);
+  } else {
+    state.generatedGCode = buildGCode(strokes, safeZ, drawZ, speed, zSpeed);
+  }
   completeStep('emit', 'GCODE');
 
   // 5. READY
@@ -294,19 +468,33 @@ bind('nav-home',    () => switchScreen('screen-mode'));
 bind('nav-upload',  () => switchScreen('screen-upload'));
 bind('nav-editor',  () => switchScreen('screen-editor'));
 bind('nav-manual',  () => switchScreen('screen-manual'));
+bind('nav-ai',      () => switchScreen('screen-ai'));
 bind('nav-process', () => switchScreen('screen-processing'));
 bind('nav-results', () => switchScreen('screen-results'));
 bind('nav-ctrl',    () => switchScreen('screen-controller'));
 
+// Back buttons
+bind('upload-back',  () => switchScreen('screen-mode'));
+bind('editor-back',  () => switchScreen('screen-upload'));
+bind('manual-back',  () => switchScreen('screen-upload'));
+bind('ai-back',      () => switchScreen('screen-mode'));
+bind('results-back', () => switchScreen('screen-processing'));
+
 // Mode Selection
 const initMode = (m) => {
-  state.missionMode = m; // store mode if needed
+  state.missionMode = m;
+  if (m === 'ai') {
+    switchScreen('screen-ai');
+    return;
+  }
   switchScreen('screen-upload');
   if($('upload-mode-badge')) $('upload-mode-badge').textContent = m.toUpperCase();
 };
 bind('btn-automated', () => initMode('automated'));
 bind('btn-semi',      () => initMode('semi'));
 bind('btn-manual',    () => initMode('manual'));
+bind('btn-ai',        () => initMode('ai'));
+bind('btn-noz',       () => { state.missionMode = 'noz'; switchScreen('screen-upload'); if($('upload-mode-badge')) $('upload-mode-badge').textContent = 'NO Z-AXIS'; });
 
 bind('file-input', e => { /* change event handled below */ });
 // The file upload uses onchange, not onclick. Let's fix that.

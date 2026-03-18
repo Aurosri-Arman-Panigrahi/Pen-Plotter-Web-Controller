@@ -24,6 +24,7 @@
       <button class="nav-btn"        id="nav-upload"  data-screen="screen-upload">⬆ UPLOAD</button>
       <button class="nav-btn"        id="nav-editor"  data-screen="screen-editor">⚙ CANVAS</button>
       <button class="nav-btn"        id="nav-manual"  data-screen="screen-manual">🎛 MANUAL</button>
+      <button class="nav-btn"        id="nav-ai"      data-screen="screen-ai">🤖 AI GEN</button>
       <button class="nav-btn"        id="nav-process" data-screen="screen-processing">⟳ PIPELINE</button>
       <button class="nav-btn"        id="nav-results" data-screen="screen-results">✓ RESULTS</button>
       <button class="nav-btn"        id="nav-ctrl"    data-screen="screen-controller">📡 CONTROLLER</button>
@@ -65,6 +66,24 @@
           <h2 class="card-title">MANUAL</h2>
           <p class="card-desc">Full control over every parameter. Threshold, spacing, tool diameter and more.</p>
           <ul class="card-feats"><li>Full parameter control</li><li>Live preview</li><li>Per-step execution</li><li>Expert mode</li></ul>
+          <div class="card-cta">INITIATE →</div>
+        </button>
+        <button class="mode-card mode-card-ai" id="btn-ai" data-mode="ai">
+          <div class="card-glow"></div>
+          <div class="card-icon">🤖</div>
+          <div class="card-badge" style="background:var(--accent2,#a855f7)">AI POWERED</div>
+          <h2 class="card-title">AI PROMPT</h2>
+          <p class="card-desc">Describe what you want to draw in plain text. AI generates precise G-code instantly.</p>
+          <ul class="card-feats"><li>Natural language input</li><li>No image needed</li><li>Instant G-code</li><li>Groq Llama 3.1 8B</li></ul>
+          <div class="card-cta">INITIATE →</div>
+        </button>
+        <button class="mode-card mode-card-noz" id="btn-noz" data-mode="noz">
+          <div class="card-glow"></div>
+          <div class="card-icon">↔</div>
+          <div class="card-badge" style="background:#0ea5e9">FLAT SURFACE</div>
+          <h2 class="card-title">NO Z-AXIS</h2>
+          <p class="card-desc">Pure X/Y plotting — no pen lift commands. Ideal for felt-tips or a flat dragging pen.</p>
+          <ul class="card-feats"><li>Upload image</li><li>Auto vectorise</li><li>No Z movements</li><li>Fastest output</li></ul>
           <div class="card-cta">INITIATE →</div>
         </button>
       </div>
@@ -191,6 +210,89 @@
           <div class="tab-content active" id="tab-original"><img id="manual-orig-img" alt="Original image"></div>
           <div class="tab-content" id="tab-processed"><canvas id="manual-canvas" width="350" height="350"></canvas></div>
           <div class="tab-content" id="tab-gcode"><textarea id="manual-gcode-out" class="gcode-textarea" readonly placeholder="G-code will appear here..."></textarea></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ SCREEN 2C: AI G-Code Generator ═══ -->
+  <main id="screen-ai" class="screen">
+    <div class="screen-content">
+      <div class="screen-header">
+        <button class="back-btn" id="ai-back">← BACK</button>
+        <h2 class="screen-title">AI <span class="accent">G-CODE GEN</span></h2>
+        <div class="mode-badge" style="background:var(--accent2,#a855f7)">AI PROMPT</div>
+      </div>
+
+      <!-- API Key Setup Banner -->
+      <div class="ai-setup-banner" id="ai-setup-banner">
+        <span class="ai-setup-icon">🔑</span>
+        <div class="ai-setup-text">
+          <strong>First time?</strong> Get your free Groq API key at
+          <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>
+          → Create API Key → paste below. Stored in your browser only.
+        </div>
+        <button class="ai-setup-dismiss" id="ai-banner-dismiss">DISMISS</button>
+      </div>
+
+      <div class="ai-layout">
+        <!-- Left: Prompt Panel -->
+        <div class="ai-prompt-panel">
+          <div class="ctrl-group-label">1 › API KEY</div>
+          <div class="ai-key-row">
+            <input type="password" id="ai-api-key" class="ai-key-input" placeholder="gsk_••••••••••••••••••••••••••••••••" autocomplete="off">
+            <button class="ai-key-toggle" id="ai-key-toggle" title="Show/Hide key">👁</button>
+            <button class="btn-secondary ai-key-save" id="ai-key-save">SAVE</button>
+          </div>
+          <div class="ai-key-status" id="ai-key-status"></div>
+
+          <div class="ctrl-group-label" style="margin-top:20px;">2 › DESCRIBE YOUR DRAWING</div>
+          <div class="ai-prompt-examples">
+            <span class="ai-example-label">Examples:</span>
+            <button class="ai-chip" data-prompt="Draw a 40mm square centered at X35, Y35">40mm Square</button>
+            <button class="ai-chip" data-prompt="Draw a circle of radius 20mm centered at X35, Y35">Circle r=20</button>
+            <button class="ai-chip" data-prompt="Draw a 5-pointed star inscribed in a circle of radius 25mm centered at X35, Y35">Star</button>
+            <button class="ai-chip" data-prompt="Draw a zigzag pattern from X0,Y35 to X70,Y35 with 7 teeth each 10mm tall">Zigzag</button>
+            <button class="ai-chip" data-prompt="Draw the letters A and B each 20mm tall at X5,Y10 and X40,Y10 respectively">Letters A B</button>
+          </div>
+          <textarea id="ai-prompt-input" class="ai-prompt-textarea" placeholder="Describe what you want to draw...&#10;&#10;E.g.: Draw a 30mm equilateral triangle centered at X35, Y35. Work area is 70×70mm. Generate clean GRBL G-code only."></textarea>
+
+          <div class="ai-options-row">
+            <div class="ctrl-row">
+              <label class="ctrl-label">Feed rate (mm/min)</label>
+              <input type="number" id="ai-feed" value="800" min="100" max="3000" step="100" class="ctrl-input">
+            </div>
+            <div class="ctrl-row">
+              <label class="ctrl-label">Safe Z — pen up (mm)</label>
+              <input type="number" id="ai-safe-z" value="0.8" min="0.5" max="5" step="0.1" class="ctrl-input">
+            </div>
+            <div class="ctrl-row">
+              <label class="ctrl-label">Draw Z — pen down (mm)</label>
+              <input type="number" id="ai-draw-z" value="0.0" min="-2" max="0" step="0.1" class="ctrl-input">
+            </div>
+          </div>
+
+          <button class="btn-primary full-width" id="btn-ai-generate">🤖 GENERATE G-CODE</button>
+        </div>
+
+        <!-- Right: Output Panel -->
+        <div class="ai-output-panel">
+          <div class="ai-status-row">
+            <div class="panel-label">G-CODE OUTPUT</div>
+            <div class="ai-status-badge hidden" id="ai-status-badge">⟳ GENERATING…</div>
+          </div>
+          <div class="ai-output-wrap">
+            <textarea id="ai-gcode-out" class="gcode-textarea ai-gcode" readonly placeholder="Generated G-code will appear here…&#10;&#10;Click GENERATE G-CODE to start."></textarea>
+          </div>
+          <div class="ai-output-info hidden" id="ai-output-info">
+            <span id="ai-line-count">0 lines</span>
+            <span id="ai-model-used">• llama-3.1-8b-instant</span>
+          </div>
+          <div class="ai-action-row hidden" id="ai-action-row">
+            <button class="dl-btn" id="ai-dl-gcode">⬇ Download G-Code</button>
+            <button class="btn-secondary" id="btn-ai-retry">⟳ RETRY</button>
+            <button class="btn-primary" id="btn-ai-proceed">▶ SEND TO CONTROLLER →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -385,7 +487,8 @@
         <button class="info-close" id="info-close">✕</button>
       </div>
       <div class="info-tabs">
-        <button class="itab active" data-itab="arduino">ARDUINO SETUP</button>
+        <button class="itab active" data-itab="ai-setup">🤖 AI SETUP</button>
+        <button class="itab" data-itab="arduino">ARDUINO SETUP</button>
         <button class="itab" data-itab="wireless">WIRELESS SETUP</button>
         <button class="itab" data-itab="wiring">WIRING</button>
         <button class="itab" data-itab="arduino-code">ARDUINO CODE</button>

@@ -6,6 +6,57 @@
 
 const INFO_CONTENT = {
 
+  /* ══════════════════ TAB 0 — AI SETUP ══════════════════ */
+  'ai-setup': `
+<h3>AI G-CODE GENERATOR — SETUP GUIDE</h3>
+<p>The AI Prompt mode uses <strong>Llama 3.1 8B</strong> (Meta, open-source) running on <strong>Groq</strong>'s free cloud API to generate precise G-code from plain text descriptions. No installation required.</p>
+
+<h3>STEP 1 — GET YOUR FREE GROQ API KEY</h3>
+<ol style="padding-left:18px;line-height:1.9">
+  <li>Open <a href="https://console.groq.com" target="_blank" rel="noopener" style="color:var(--cyan)">console.groq.com</a> in a new tab</li>
+  <li>Sign up for a free account (GitHub / Google login supported)</li>
+  <li>Go to <strong>API Keys</strong> in the left sidebar</li>
+  <li>Click <strong>Create API Key</strong>, give it a name (e.g. "pen-plotter")</li>
+  <li>Copy the key (starts with <code>gsk_</code>)</li>
+</ol>
+
+<h3>STEP 2 — PASTE YOUR KEY INTO THE APP</h3>
+<ol style="padding-left:18px;line-height:1.9">
+  <li>Click <strong>🤖 AI GEN</strong> in the navigation bar or the <strong>AI PROMPT</strong> mission card</li>
+  <li>Paste your API key into the <strong>API KEY</strong> field</li>
+  <li>Click <strong>SAVE</strong> — the key is stored only in your browser's localStorage, never sent anywhere except Groq</li>
+</ol>
+
+<h3>STEP 3 — GENERATE G-CODE</h3>
+<ol style="padding-left:18px;line-height:1.9">
+  <li>Describe your drawing in plain English in the <strong>prompt box</strong></li>
+  <li>Use the quick Example chips for common shapes</li>
+  <li>Adjust the feed rate and Z heights if needed</li>
+  <li>Click <strong>🤖 GENERATE G-CODE</strong></li>
+  <li>Review the generated G-code, then click <strong>SEND TO CONTROLLER</strong> to plot it</li>
+</ol>
+
+<h3>PROMPT TIPS FOR BEST RESULTS</h3>
+<table>
+  <tr><th>Do</th><th>Example</th></tr>
+  <tr><td>Specify exact dimensions in mm</td><td>Draw a 40mm square</td></tr>
+  <tr><td>Give a center coordinate</td><td>Centered at X35, Y35</td></tr>
+  <tr><td>Describe the shape clearly</td><td>Draw a 5-pointed star</td></tr>
+  <tr><td>Ask for text</td><td>Write the letter A, 25mm tall at X10, Y10</td></tr>
+</table>
+
+<h3>AI MODEL DETAILS</h3>
+<table>
+  <tr><th>Property</th><th>Value</th></tr>
+  <tr><td>Model</td><td>llama-3.1-8b-instant</td></tr>
+  <tr><td>Provider</td><td>Groq (free tier)</td></tr>
+  <tr><td>Open Source</td><td>✓ Meta Llama 3.1</td></tr>
+  <tr><td>Speed</td><td>~500 tokens/sec</td></tr>
+  <tr><td>Free Limit</td><td>30 req/min, 14,400 req/day</td></tr>
+  <tr><td>Privacy</td><td>API key stored in browser only</td></tr>
+</table>
+`,
+
   /* ══════════════════ TAB 1 — ARDUINO SETUP ══════════════════ */
   arduino: `
 <h3>ARDUINO SETUP — GRBL-28BYJ-48</h3>
