@@ -709,3 +709,32 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   flex-wrap: wrap;
   align-items: center;
 }
+
+/* ═══ PROCESSING PIPELINE PROGRESS BAR ═══ */
+.proc-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 0 16px 0;
+}
+.proc-progress-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(0,255,255,.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.proc-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan), #a855f7);
+  border-radius: 4px;
+  transition: width .4s ease;
+}
+.proc-progress-pct {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan);
+  min-width: 36px;
+  text-align: right;
+}

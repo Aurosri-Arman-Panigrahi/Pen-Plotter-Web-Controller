@@ -52,7 +52,19 @@ function buildTimeline() {
   });
 }
 
+let _stepStartTimes = {};
+
+function _updateProgress() {
+  const total   = TL_STEPS.length;
+  const done    = TL_STEPS.filter(s => { const el = $('step-' + s.id); return el && el.classList.contains('done'); }).length;
+  const active  = TL_STEPS.findIndex(s => { const el = $('step-' + s.id); return el && el.classList.contains('active'); });
+  const percent = Math.round(((done + (active >= 0 ? 0.5 : 0)) / total) * 100);
+  if ($('proc-progress-fill')) $('proc-progress-fill').style.width = percent + '%';
+  if ($('proc-progress-pct'))  $('proc-progress-pct').textContent  = percent + '%';
+}
+
 function activateStep(id) {
+  _stepStartTimes[id] = Date.now();
   TL_STEPS.forEach(s => {
     const el = $('step-' + s.id);
     if(el) el.classList.remove('active');
@@ -62,12 +74,19 @@ function activateStep(id) {
     active.classList.add('active');
     active.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+  _updateProgress();
 }
 
 function completeStep(id, type) {
   const el = $('step-' + id);
   if(el) {
+    el.classList.remove('active');
     el.classList.add('done');
+    // Update elapsed timer
+    const elapsed = _stepStartTimes[id] ? ((Date.now() - _stepStartTimes[id]) / 1000).toFixed(1) + 's' : '--';
+    const timer = $('time-' + id);
+    if (timer) timer.textContent = elapsed;
+    // Download button
     const actions = $('tl-actions-' + id);
     if(actions && !actions.innerHTML) {
       if(type === 'ORIG') {
@@ -104,6 +123,7 @@ function completeStep(id, type) {
       }
     }
   }
+  _updateProgress();
 }
 
 function downloadBlob(data, filename, mime) {
@@ -443,7 +463,16 @@ async function startMission(mode) {
 
   // 5. READY
   activateStep('ready');
+  await new Promise(r => setTimeout(r, 400));
+  completeStep('ready', 'ALL');
   state.isProcessing = false;
+
+  // Populate results screen
+  if($('results-orig-img'))   $('results-orig-img').src = state.originalImage.src;
+  if($('results-thresh-img')) $('results-thresh-img').src = state.thresholdedImage;
+  if($('results-svg-preview')) $('results-svg-preview').innerHTML = state.svgPreview || '';
+  if($('results-line-count')) $('results-line-count').textContent = state.gcodeLines.length + ' G-code lines';
+
   if($('btn-proc-results')) {
     $('btn-proc-results').classList.remove('hidden');
     $('btn-proc-results').disabled = false;
@@ -461,6 +490,25 @@ function switchScreen(id) {
   if($(id)) $(id).classList.add('active');
   const navId = 'nav-' + id.split('-')[1];
   if($(navId)) $(navId).classList.add('active');
+  // When entering the semi-auto canvas editor, draw the uploaded image
+  if (id === 'screen-editor') drawEditorCanvas();
+}
+
+function drawEditorCanvas() {
+  const canvas = $('editor-canvas');
+  if (!canvas || !state.originalImage) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width  = canvas.offsetWidth  || 600;
+  canvas.height = canvas.offsetHeight || 400;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Draw image scaled to fit canvas preserving aspect ratio
+  const img = state.originalImage;
+  const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+  const w = img.naturalWidth  * scale;
+  const h = img.naturalHeight * scale;
+  const ox = (canvas.width  - w) / 2;
+  const oy = (canvas.height - h) / 2;
+  ctx.drawImage(img, ox, oy, w, h);
 }
 
 // Navigation
@@ -561,19 +609,19 @@ bind('btn-reupload', () => {
 
 bind('btn-proceed-upload', () => {
   if (!state.originalImage) { alert('Please upload an image first.'); return; }
-  if(state.missionMode === 'automated' || state.missionMode === 'noz') startMission(state.missionMode === 'noz' ? 'noz' : 'auto');
-  else if(state.missionMode === 'semi') switchScreen('screen-editor');
-  else switchScreen('screen-manual');
+  const m = state.missionMode;
+  if (m === 'automated' || m === 'noz')  startMission(m);
+  else if (m === 'semi')                  switchScreen('screen-editor');
+  else                                    switchScreen('screen-manual');
 });
 
 bind('btn-proc-results', () => switchScreen('screen-results'));
 
 // Manual Mode DLs — null-safe
-bind('manual-dl-orig',   () => { if(state.originalImage) downloadBlob(state.originalImage.src, 'manual_orig.png', 'image/png'); });
-bind('manual-dl-thresh', () => { if(state.thresholdedImage) downloadBlob(state.thresholdedImage, 'manual_thresh.png', 'image/png'); });
-bind('manual-dl-svg',    () => { if(state.svgPreview) downloadBlob(state.svgPreview, 'manual_vector.svg', 'image/svg+xml'); });
-bind('manual-dl-gcode',  () => { if(state.generatedGCode) downloadBlob(state.generatedGCode, 'manual_plotter.gcode', 'text/plain'); });
-$('manual-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'manual_plotter.gcode', 'text/plain');
+bind('manual-dl-orig',   () => { if(state.originalImage)   downloadBlob(state.originalImage.src,  'manual_orig.png',      'image/png');  });
+bind('manual-dl-thresh', () => { if(state.thresholdedImage) downloadBlob(state.thresholdedImage,  'manual_thresh.png',    'image/png');  });
+bind('manual-dl-svg',    () => { if(state.svgPreview)       downloadBlob(state.svgPreview,         'manual_vector.svg',    'image/svg+xml'); });
+bind('manual-dl-gcode',  () => { if(state.generatedGCode)   downloadBlob(state.generatedGCode,    'manual_plotter.gcode', 'text/plain'); });
 
 // Results Screen DLs
 if($('results-dl-png')) $('results-dl-png').onclick = () => downloadBlob(state.thresholdedImage, 'final_plot.png', 'image/png');

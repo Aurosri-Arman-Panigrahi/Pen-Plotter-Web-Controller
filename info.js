@@ -727,10 +727,12 @@ function copyCode(id) {
   if (!el) return;
   navigator.clipboard.writeText(el.textContent).then(() => {
     const btns = document.querySelectorAll('.copy-btn');
-    btns.forEach(b => { if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(id)) {
-      b.textContent = '✓ COPIED!';
-      setTimeout(() => { b.textContent = 'COPY'; }, 2000);
-    }});
+    btns.forEach(b => {
+      if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(id)) {
+        b.textContent = '✓ COPIED!';
+        setTimeout(() => { b.textContent = 'COPY'; }, 2000);
+      }
+    });
   });
 }
 
@@ -764,8 +766,8 @@ window.copyCode = copyCode;
 
 /* Wireless Setup sub-tab switcher — must be global because it is
    called from onclick attributes rendered inside innerHTML.        */
-window.wsTab = function(section, tab) {
-  ['circuit','code','steps'].forEach(t => {
+window.wsTab = function (section, tab) {
+  ['circuit', 'code', 'steps'].forEach(t => {
     const el = document.getElementById('wst-' + section + '-' + t);
     if (el) el.classList.toggle('hidden', t !== tab);
   });
