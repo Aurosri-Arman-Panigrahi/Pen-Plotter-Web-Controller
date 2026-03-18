@@ -467,11 +467,13 @@ async function startMission(mode) {
   completeStep('ready', 'ALL');
   state.isProcessing = false;
 
-  // Populate results screen
-  if($('results-orig-img'))   $('results-orig-img').src = state.originalImage.src;
-  if($('results-thresh-img')) $('results-thresh-img').src = state.thresholdedImage;
-  if($('results-svg-preview')) $('results-svg-preview').innerHTML = state.svgPreview || '';
-  if($('results-line-count')) $('results-line-count').textContent = state.gcodeLines.length + ' G-code lines';
+  // Draw path on processing live preview canvas
+  drawProcCanvas();
+
+  // Update proc-status
+  if ($('proc-status')) $('proc-status').textContent = '✓ Processing complete — ' + state.gcodeLines.length + ' G-code lines';
+
+  populateResultsScreen();
 
   if($('btn-proc-results')) {
     $('btn-proc-results').classList.remove('hidden');
@@ -479,6 +481,36 @@ async function startMission(mode) {
   }
   loadGCodeIntoController();
 }
+
+/* Draw the vector path onto the proc-canvas after processing */
+function drawProcCanvas() {
+  const canvas = $('proc-canvas');
+  if (!canvas || !state.svgPreview) return;
+  const W = canvas.width || 280, H = canvas.height || 280;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#050d1a'; ctx.fillRect(0, 0, W, H);
+  // Parse gcode lines for positions
+  let cx = 0, cy = 0, penDown = false;
+  ctx.strokeStyle = 'rgba(0,220,255,0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  (state.gcodeLines || []).forEach(l => {
+    const zm = l.match(/Z([\-\d.]+)/); if (zm) penDown = parseFloat(zm[1]) <= 0.5;
+    const xm = l.match(/X([\-\d.]+)/); if (xm) cx = parseFloat(xm[1]);
+    const ym = l.match(/Y([\-\d.]+)/); if (ym) cy = parseFloat(ym[1]);
+    const px = (cx / 70) * W, py = (cy / 70) * H;
+    if (penDown) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  });
+  ctx.stroke();
+}
+
+/* Populate Results screen with correct element IDs */
+function populateResultsScreen() {
+  if ($('svg-preview-container')) $('svg-preview-container').innerHTML = state.svgPreview || '';
+  if ($('results-gcode'))        $('results-gcode').value             = state.generatedGCode || '';
+  if ($('results-stats'))        $('results-stats').textContent       = state.gcodeLines.length + ' G-code lines generated';
+}
+
 
 // ─────────────────────────────────────────────
 //  UI HANDLERS
@@ -527,6 +559,13 @@ bind('editor-back',  () => switchScreen('screen-upload'));
 bind('manual-back',  () => switchScreen('screen-upload'));
 bind('ai-back',      () => switchScreen('screen-mode'));
 bind('results-back', () => switchScreen('screen-processing'));
+bind('ctrl-back',    () => switchScreen('screen-results'));
+
+// Fix 1 — Canvas process-image button
+bind('btn-process-semi', () => {
+  if (!state.originalImage) { alert('Upload an image first.'); return; }
+  startMission('semi');
+});
 
 // Mode Selection
 const initMode = (m) => {
@@ -617,6 +656,85 @@ bind('btn-proceed-upload', () => {
 
 bind('btn-proc-results', () => switchScreen('screen-results'));
 
+// ─── Fix 2 — Manual preview tabs ────────────────────────────
+function switchManualTab(name) {
+  document.querySelectorAll('.preview-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c =>
+    c.classList.toggle('active', c.id === 'tab-' + name));
+}
+document.querySelectorAll('.preview-tab').forEach(btn =>
+  btn.addEventListener('click', () => switchManualTab(btn.dataset.tab)));
+
+// Fix 3 — Manual “APPLY & PREVIEW” button
+bind('btn-apply-threshold', async () => {
+  if (!state.originalImage) { alert('Upload an image first.'); return; }
+  const th = parseInt($('threshold-slider')?.value) || 128;
+  if ($('threshold-val')) $('threshold-val').textContent = th;
+  const binary = await processImage(state.originalImage, th);
+  // Draw thresholded result onto manual-canvas
+  const mc = $('manual-canvas');
+  if (mc) {
+    const img = new Image();
+    img.onload = () => {
+      const ctx = mc.getContext('2d');
+      mc.width  = mc.offsetWidth  || 350;
+      mc.height = mc.offsetHeight || 350;
+      ctx.drawImage(img, 0, 0, mc.width, mc.height);
+    };
+    img.src = state.thresholdedImage;
+  }
+  switchManualTab('processed');
+});
+
+// threshold slider live preview
+if ($('threshold-slider')) {
+  $('threshold-slider').addEventListener('input', function() {
+    if ($('threshold-val')) $('threshold-val').textContent = this.value;
+  });
+}
+
+// Fix 3b — Manual “GENERATE G-CODE” button
+bind('btn-gen-gcode', async () => {
+  if (!state.thresholdedImage) {
+    // Run threshold first if not done yet
+    if (!state.originalImage) { alert('Upload and apply threshold first.'); return; }
+    const th = parseInt($('threshold-slider')?.value) || 128;
+    await processImage(state.originalImage, th);
+  }
+  // Vectorise
+  const binary = await processImage(state.originalImage, parseInt($('threshold-slider')?.value) || 128);
+  const contours = traceContours(binary);
+  const styleEl = $('draw-style');
+  const style = styleEl ? styleEl.value : 'outline';
+  const hatch = (style !== 'outline')
+    ? generateHatch(binary, parseFloat($('hatch-spacing')?.value || 0.5), parseInt($('hatch-angle')?.value || 45))
+    : [];
+  const strokes = contours.concat(hatch);
+  state.svgPreview    = buildSVG(strokes);
+  const safeZ  = parseFloat($('safe-z')?.value) || 0.8;
+  const drawZ  = parseFloat($('draw-z')?.value)  || 0.0;
+  const speed  = parseInt($('feed-rate')?.value)  || 800;
+  const zSpeed = parseInt($('z-feed')?.value)     || 100;
+  state.generatedGCode = buildGCode(strokes, safeZ, drawZ, speed, zSpeed);
+  // Show in G-CODE tab
+  if ($('manual-gcode-out')) $('manual-gcode-out').value = state.generatedGCode;
+  // Enable download buttons
+  ['manual-dl-orig','manual-dl-thresh','manual-dl-svg','manual-dl-gcode'].forEach(id => {
+    if ($(id)) $(id).disabled = false;
+  });
+  if ($('btn-manual-continue')) $('btn-manual-continue').disabled = false;
+  switchManualTab('gcode');
+});
+
+bind('btn-manual-continue', () => {
+  if (!state.generatedGCode) { alert('Generate G-code first.'); return; }
+  // Populate results screen before navigating
+  populateResultsScreen();
+  switchScreen('screen-results');
+});
+
+
 // Manual Mode DLs — null-safe
 bind('manual-dl-orig',   () => { if(state.originalImage)   downloadBlob(state.originalImage.src,  'manual_orig.png',      'image/png');  });
 bind('manual-dl-thresh', () => { if(state.thresholdedImage) downloadBlob(state.thresholdedImage,  'manual_thresh.png',    'image/png');  });
@@ -624,9 +742,13 @@ bind('manual-dl-svg',    () => { if(state.svgPreview)       downloadBlob(state.s
 bind('manual-dl-gcode',  () => { if(state.generatedGCode)   downloadBlob(state.generatedGCode,    'manual_plotter.gcode', 'text/plain'); });
 
 // Results Screen DLs
-if($('results-dl-png')) $('results-dl-png').onclick = () => downloadBlob(state.thresholdedImage, 'final_plot.png', 'image/png');
-if($('results-dl-svg')) $('results-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'final_vector.svg', 'image/svg+xml');
-// if($('results-dl-gcode')) $('results-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'final_plotter.gcode', 'text/plain');
+bind('results-dl-png', () => { if(state.thresholdedImage) downloadBlob(state.thresholdedImage, 'final_plot.png', 'image/png'); });
+bind('results-dl-svg', () => { if(state.svgPreview)       downloadBlob(state.svgPreview,        'final_vector.svg', 'image/svg+xml'); });
+bind('btn-download',   () => {
+  const name = $('gcode-filename')?.value?.trim() || 'plotter_output';
+  if (state.generatedGCode) downloadBlob(state.generatedGCode, name + '.gcode', 'text/plain');
+});
+bind('btn-to-controller', () => { loadGCodeIntoController(); switchScreen('screen-controller'); });
 
 // ─────────────────────────────────────────────
 //  GRBL CONTROLLER (Wired + Wireless)
@@ -876,16 +998,41 @@ if($('btn-start-plot')) $('btn-start-plot').onclick = async () => {
   $('btn-start-plot').textContent = '▶ START MISSION';
 };
 
-// ─── VISUALIZER ───
+// ─── VISUALIZER ────────────────────────────────────────────
+// vizGhost is a regular HTMLCanvasElement drawn as a background layer
 let vizCanvas, vizCtx, vizGhost, vizRaf;
+
 function initVisualizer() {
-  vizCanvas = $('live-visualizer'); if(!vizCanvas) return;
+  vizCanvas = $('live-visualizer');
+  if (!vizCanvas) return;
   vizCtx = vizCanvas.getContext('2d');
-  const W = vizCanvas.width, H = vizCanvas.height;
+  const W = vizCanvas.width  || vizCanvas.offsetWidth  || 400;
+  const H = vizCanvas.height || vizCanvas.offsetHeight || 300;
+  vizCanvas.width  = W;
+  vizCanvas.height = H;
   const coords = parseGCodeForViz(state.gcodeLines);
-  vizGhost = renderGhost(coords, W, H);
-  if(vizRaf) cancelAnimationFrame(vizRaf);
+  vizGhost = buildVizGhost(coords, W, H); // returns HTMLCanvasElement
+  if (vizRaf) cancelAnimationFrame(vizRaf);
   renderLoop();
+}
+
+function buildVizGhost(pts, W, H) {
+  const oc = document.createElement('canvas');
+  oc.width = W; oc.height = H;
+  const c = oc.getContext('2d');
+  c.fillStyle = '#050d1a'; c.fillRect(0, 0, W, H);
+  // Draw grid
+  c.strokeStyle = 'rgba(0,255,255,0.05)'; c.lineWidth = 0.5;
+  for (let i = 0; i <= 7; i++) {
+    const x = (i / 7) * W, y = (i / 7) * H;
+    c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
+    c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+  }
+  // Draw ghost path
+  c.strokeStyle = 'rgba(0,200,255,0.15)'; c.lineWidth = 1; c.beginPath();
+  pts.forEach(p => { const px=(p.x/70)*W, py=(p.y/70)*H; p.down?c.lineTo(px,py):c.moveTo(px,py); });
+  c.stroke();
+  return oc;
 }
 
 function parseGCodeForViz(lines) {
@@ -899,21 +1046,82 @@ function parseGCodeForViz(lines) {
   return pts;
 }
 
-function renderGhost(pts, W, H) {
-  const oc = new OffscreenCanvas(W,H); const c = oc.getContext('2d');
-  c.fillStyle = '#050d1a'; c.fillRect(0,0,W,H);
-  c.strokeStyle = 'rgba(0,200,255,0.1)'; c.beginPath();
-  pts.forEach(p => { const px=(p.x/70)*W, py=(p.y/70)*H; p.down?c.lineTo(px,py):c.moveTo(px,py); });
-  c.stroke(); return oc;
+function renderLoop() {
+  if (!vizCanvas || !vizCtx) return;
+  const W = vizCanvas.width, H = vizCanvas.height;
+  if (vizGhost) vizCtx.drawImage(vizGhost, 0, 0);
+  else { vizCtx.fillStyle = '#050d1a'; vizCtx.fillRect(0, 0, W, H); }
+  // Pen head dot
+  const px = (state.vizX / 70) * W, py = (state.vizY / 70) * H;
+  vizCtx.strokeStyle = '#00ff88'; vizCtx.lineWidth = 2;
+  vizCtx.beginPath(); vizCtx.arc(px, py, 6, 0, Math.PI*2); vizCtx.stroke();
+  vizRaf = requestAnimationFrame(renderLoop);
 }
 
-function renderLoop() {
+// ─── SIMULATE (PREVIEW) ────────────────────────────────────────
+let simRaf = null, simRunning = false;
+
+bind('btn-simulate', () => {
+  if (!state.gcodeLines || state.gcodeLines.length === 0) {
+    alert('No G-code loaded. Process an image first.'); return;
+  }
+  if (simRunning) {
+    simRunning = false;
+    if (simRaf) cancelAnimationFrame(simRaf);
+    if ($('btn-simulate')) $('btn-simulate').textContent = '▶ PREVIEW SIMULATION';
+    return;
+  }
+  if ($('btn-simulate')) $('btn-simulate').textContent = '⏹ STOP SIMULATION';
+  initVisualizer(); // re-init ghost
+  simulateGCode();
+});
+
+function simulateGCode() {
+  if (!vizCanvas || !vizCtx) return;
   const W = vizCanvas.width, H = vizCanvas.height;
-  vizCtx.drawImage(vizGhost, 0, 0);
-  // Pen tracking
-  const px = (state.vizX/70)*W, py = (state.vizY/70)*H;
-  vizCtx.strokeStyle = '#00ff88'; vizCtx.beginPath(); vizCtx.arc(px,py,6,0,7); vizCtx.stroke();
-  vizRaf = requestAnimationFrame(renderLoop);
+  const lines = state.gcodeLines;
+  const total  = lines.length;
+  let idx = 0;
+  let cx = 0, cy = 0, penDown = false;
+  // Trail canvas (drawn over ghost to show ink)
+  const trail = document.createElement('canvas');
+  trail.width = W; trail.height = H;
+  const tc = trail.getContext('2d');
+  tc.strokeStyle = '#00ddff'; tc.lineWidth = 1.2;
+  simRunning = true;
+
+  const STEPS_PER_FRAME = Math.max(1, Math.floor(total / 600)); // finish in ~600 frames
+
+  function step() {
+    if (!simRunning || idx >= total) {
+      simRunning = false;
+      if ($('btn-simulate')) $('btn-simulate').textContent = '▶ PREVIEW SIMULATION';
+      return;
+    }
+    for (let s = 0; s < STEPS_PER_FRAME && idx < total; s++, idx++) {
+      const l = lines[idx];
+      const xm = l.match(/X([-\d.]+)/); if(xm) cx = parseFloat(xm[1]);
+      const ym = l.match(/Y([-\d.]+)/); if(ym) cy = parseFloat(ym[1]);
+      const zm = l.match(/Z([-\d.]+)/); if(zm) penDown = parseFloat(zm[1]) <= 0.5;
+      const px = (cx/70)*W, py = (cy/70)*H;
+      if (penDown) { tc.lineTo(px, py); tc.stroke(); tc.beginPath(); tc.moveTo(px, py); }
+      else { tc.beginPath(); tc.moveTo(px, py); }
+      state.vizX = cx; state.vizY = cy;
+    }
+    // Compose: ghost + trail + pen dot
+    if (vizGhost) vizCtx.drawImage(vizGhost, 0, 0);
+    vizCtx.drawImage(trail, 0, 0);
+    const px = (cx/70)*W, py = (cy/70)*H;
+    vizCtx.strokeStyle = '#00ff88'; vizCtx.lineWidth = 2;
+    vizCtx.beginPath(); vizCtx.arc(px, py, 5, 0, Math.PI*2); vizCtx.stroke();
+    // Progress bar
+    const pct = Math.round((idx/total)*100);
+    if ($('stream-bar')) $('stream-bar').style.width = pct + '%';
+    if ($('stream-stats')) $('stream-stats').textContent = 'Lines: ' + idx + ' / ' + total;
+    simRaf = requestAnimationFrame(step);
+  }
+  tc.beginPath();
+  simRaf = requestAnimationFrame(step);
 }
 
 // duplicate setConnected removed
