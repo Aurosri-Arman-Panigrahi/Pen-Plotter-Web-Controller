@@ -496,38 +496,83 @@ bind('btn-manual',    () => initMode('manual'));
 bind('btn-ai',        () => initMode('ai'));
 bind('btn-noz',       () => { state.missionMode = 'noz'; switchScreen('screen-upload'); if($('upload-mode-badge')) $('upload-mode-badge').textContent = 'NO Z-AXIS'; });
 
-bind('file-input', e => { /* change event handled below */ });
-// The file upload uses onchange, not onclick. Let's fix that.
+// ─── UPLOAD ZONE ──────────────────────────────────────
+// Clicking anywhere in the upload zone opens the file picker
+if($('upload-trigger')) {
+  $('upload-trigger').onclick = () => $('file-input') && $('file-input').click();
+}
+
+// Also allow clicking the outer zone
+if($('upload-zone')) {
+  $('upload-zone').addEventListener('click', (e) => {
+    // Only trigger if click wasn't on the inner trigger itself (avoids double fire)
+    if (e.target === $('upload-zone')) { if($('file-input')) $('file-input').click(); }
+  });
+
+  // Drag-and-drop support
+  $('upload-zone').addEventListener('dragover', e => {
+    e.preventDefault();
+    $('upload-zone').classList.add('drag-over');
+  });
+  $('upload-zone').addEventListener('dragleave', () => {
+    $('upload-zone').classList.remove('drag-over');
+  });
+  $('upload-zone').addEventListener('drop', e => {
+    e.preventDefault();
+    $('upload-zone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleUploadedFile(file);
+  });
+}
+
+function handleUploadedFile(file) {
+  if (!file || !file.type.startsWith('image/')) { alert('Please select a valid image file (JPG, PNG).'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    state.originalImage = new Image();
+    state.originalImage.onload = () => {
+      if($('preview-img'))        $('preview-img').src        = ev.target.result;
+      if($('preview-info'))       $('preview-info').textContent = `${file.name} — ${(file.size/1024).toFixed(1)} KB`;
+      if($('preview-container'))  $('preview-container').classList.remove('hidden');
+      if($('upload-zone'))        $('upload-zone').classList.add('has-preview');
+      if($('btn-proceed-upload')) $('btn-proceed-upload').disabled = false;
+      // Also set for manual mode preview
+      if($('manual-orig-img'))    $('manual-orig-img').src = ev.target.result;
+    };
+    state.originalImage.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 if($('file-input')) {
   $('file-input').onchange = e => {
     const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      state.originalImage = new Image();
-      state.originalImage.onload = () => {
-         if($('preview-img')) $('preview-img').src = ev.target.result;
-         if($('preview-container')) $('preview-container').classList.remove('hidden');
-         if($('btn-proceed-upload')) $('btn-proceed-upload').disabled = false;
-      };
-      state.originalImage.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    if (file) handleUploadedFile(file);
+    e.target.value = ''; // reset so same file can be re-selected
   };
 }
 
+bind('btn-reupload', () => {
+  if($('preview-container')) $('preview-container').classList.add('hidden');
+  if($('upload-zone'))       $('upload-zone').classList.remove('has-preview');
+  if($('btn-proceed-upload')) $('btn-proceed-upload').disabled = true;
+  if($('file-input')) { $('file-input').value = ''; $('file-input').click(); }
+});
+
 bind('btn-proceed-upload', () => {
-  if(state.missionMode === 'automated') startMission('auto');
+  if (!state.originalImage) { alert('Please upload an image first.'); return; }
+  if(state.missionMode === 'automated' || state.missionMode === 'noz') startMission(state.missionMode === 'noz' ? 'noz' : 'auto');
   else if(state.missionMode === 'semi') switchScreen('screen-editor');
   else switchScreen('screen-manual');
 });
 
 bind('btn-proc-results', () => switchScreen('screen-results'));
 
-// Manual Mode DLs
-$('manual-dl-orig').onclick = () => downloadBlob(state.originalImage.src, 'manual_orig.png', 'image/png');
-$('manual-dl-thresh').onclick = () => downloadBlob(state.thresholdedImage, 'manual_thresh.png', 'image/png');
-$('manual-dl-svg').onclick = () => downloadBlob(state.svgPreview, 'manual_vector.svg', 'image/svg+xml');
+// Manual Mode DLs — null-safe
+bind('manual-dl-orig',   () => { if(state.originalImage) downloadBlob(state.originalImage.src, 'manual_orig.png', 'image/png'); });
+bind('manual-dl-thresh', () => { if(state.thresholdedImage) downloadBlob(state.thresholdedImage, 'manual_thresh.png', 'image/png'); });
+bind('manual-dl-svg',    () => { if(state.svgPreview) downloadBlob(state.svgPreview, 'manual_vector.svg', 'image/svg+xml'); });
+bind('manual-dl-gcode',  () => { if(state.generatedGCode) downloadBlob(state.generatedGCode, 'manual_plotter.gcode', 'text/plain'); });
 $('manual-dl-gcode').onclick = () => downloadBlob(state.generatedGCode, 'manual_plotter.gcode', 'text/plain');
 
 // Results Screen DLs
