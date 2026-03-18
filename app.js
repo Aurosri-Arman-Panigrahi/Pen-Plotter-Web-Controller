@@ -1013,27 +1013,36 @@ bind('btn-resume', () => sendSerial('~'));
 bind('btn-stop', () => sendSerial('\\x18'));
 bind('btn-home', () => sendSerial('$H'));
 
-bind('btn-clear-console', () => { if($('console-out')) $('console-out').innerHTML = ''; });
-bind('btn-send-cmd', async () => {
-  const i = $('console-input');
-  if(i && i.value) { await sendSerial(i.value); i.value = ''; }
-});
+// (btn-clear-console and btn-send-cmd are already wired above via consoleHandleSend)
 
 if($('btn-start-plot')) $('btn-start-plot').onclick = async () => {
-  if(state.isPlotting) { state.isPlotting = false; return; }
+  if(state.isPlotting) {
+    state.isPlotting = false;
+    if($('btn-start-plot')) $('btn-start-plot').textContent = '▶ START MISSION';
+    logConsole('⏹ Plotting stopped by user.', 'console-warn');
+    return;
+  }
+  if(!connMode) { alert('Connect to your plotter first (USB, Bluetooth, or Wi-Fi).'); return; }
+  if(!state.gcodeLines.length) { alert('No G-code loaded.'); return; }
   state.isPlotting = true;
-  $('btn-start-plot').textContent = '⏹ STOP';
+  if($('btn-start-plot')) $('btn-start-plot').textContent = '⏹ STOP';
+  logConsole('▶ Starting plot — ' + state.gcodeLines.length + ' lines', 'console-ok');
   const start = Date.now();
   for(let i=0; i<state.gcodeLines.length; i++) {
     if(!state.isPlotting) break;
     state.currentLine = i;
-    const res = await sendSerial(state.gcodeLines[i]);
-    $('stream-bar').style.width = ((i/state.gcodeLines.length)*100) + '%';
+    const line = state.gcodeLines[i];
+    const res = await sendSerial(line);
+    if($('stream-bar'))   $('stream-bar').style.width   = ((i/state.gcodeLines.length)*100).toFixed(1) + '%';
+    if($('stream-stats')) $('stream-stats').textContent = 'Lines: ' + (i+1) + ' / ' + state.gcodeLines.length + ' — ' + ((i/state.gcodeLines.length)*100).toFixed(0) + '%';
     const el = (Date.now() - start)/1000;
-    $('viz-elapsed').textContent = 'ELAPSED ' + Math.floor(el/60) + 'm ' + Math.floor(el%60) + 's';
+    if($('viz-elapsed')) $('viz-elapsed').textContent = 'ELAPSED ' + Math.floor(el/60) + 'm ' + Math.floor(el%60) + 's';
+    if(res === 'timeout') logConsole('⚠ Timeout on: ' + line, 'console-warn');
+    if(res === 'err')     logConsole('✕ Error on: ' + line, 'console-err');
   }
   state.isPlotting = false;
-  $('btn-start-plot').textContent = '▶ START MISSION';
+  if($('btn-start-plot')) $('btn-start-plot').textContent = '▶ START MISSION';
+  logConsole('✓ Plotting complete!', 'console-ok');
 };
 
 // ─── VISUALIZER ────────────────────────────────────────────
