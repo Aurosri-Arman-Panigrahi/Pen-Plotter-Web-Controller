@@ -772,14 +772,52 @@ function loadGCodeIntoController() {
   initVisualizer();
 }
 
-function logConsole(msg, cls='') {
+let _consoleLine = 0;
+function logConsole(msg, cls = '') {
   const d = $('console-out');
-  if(!d) return;
+  if (!d) return;
+  _consoleLine++;
   const el = document.createElement('div');
-  el.className = 'console-line ' + cls;
-  el.textContent = msg;
-  d.appendChild(el); d.scrollTop = d.scrollHeight;
+  el.className = 'console-line' + (cls ? ' ' + cls : '');
+  const now = new Date();
+  const ts  = now.toTimeString().slice(0, 8);
+  el.innerHTML =
+    `<span class="con-ts">${ts}</span>` +
+    `<span class="con-num">#${String(_consoleLine).padStart(4, '0')}</span>` +
+    `<span class="con-msg">${msg}</span>`;
+  d.appendChild(el);
+  // keep last 500 lines max
+  while (d.children.length > 500) d.removeChild(d.firstChild);
+  d.scrollTop = d.scrollHeight;
 }
+
+/* Allow clearing anytime */
+bind('btn-clear-console', () => {
+  if ($('console-out')) { $('console-out').innerHTML = ''; _consoleLine = 0; }
+});
+
+/* Console input — works in both simulation and connected modes */
+function consoleHandleSend() {
+  const inp  = $('console-input');
+  const cmd  = inp?.value?.trim();
+  if (!cmd) return;
+  inp.value = '';
+  if (connMode) {
+    sendSerial(cmd);     // sends to hardware
+  } else {
+    logConsole('→ ' + cmd + '  ⚠ (not connected — simulated)', 'console-sim');
+  }
+}
+bind('btn-send-cmd', consoleHandleSend);
+if ($('console-input')) {
+  $('console-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') consoleHandleSend();
+  });
+  // Always keep input enabled (user can type freely)
+  $('console-input').disabled = false;
+}
+if ($('btn-send-cmd')) $('btn-send-cmd').disabled = false;
+
 
 async function sendSerial(cmd) {
   if(!connMode) return 'no-conn';
@@ -1069,9 +1107,11 @@ bind('btn-simulate', () => {
     simRunning = false;
     if (simRaf) cancelAnimationFrame(simRaf);
     if ($('btn-simulate')) $('btn-simulate').textContent = '▶ PREVIEW SIMULATION';
+    logConsole('⏹ Simulation stopped by user.', 'console-warn');
     return;
   }
   if ($('btn-simulate')) $('btn-simulate').textContent = '⏹ STOP SIMULATION';
+  logConsole('▶ Starting simulation — ' + state.gcodeLines.length + ' lines', 'console-ok');
   initVisualizer(); // re-init ghost
   simulateGCode();
 });
@@ -1083,19 +1123,21 @@ function simulateGCode() {
   const total  = lines.length;
   let idx = 0;
   let cx = 0, cy = 0, penDown = false;
-  // Trail canvas (drawn over ghost to show ink)
   const trail = document.createElement('canvas');
   trail.width = W; trail.height = H;
   const tc = trail.getContext('2d');
   tc.strokeStyle = '#00ddff'; tc.lineWidth = 1.2;
   simRunning = true;
 
-  const STEPS_PER_FRAME = Math.max(1, Math.floor(total / 600)); // finish in ~600 frames
+  // Log every N lines so console doesn't flood (max ~60 log entries total)
+  const LOG_EVERY = Math.max(1, Math.floor(total / 60));
+  const STEPS_PER_FRAME = Math.max(1, Math.floor(total / 600));
 
   function step() {
     if (!simRunning || idx >= total) {
       simRunning = false;
       if ($('btn-simulate')) $('btn-simulate').textContent = '▶ PREVIEW SIMULATION';
+      logConsole('✓ Simulation complete — ' + total + ' lines executed', 'console-ok');
       return;
     }
     for (let s = 0; s < STEPS_PER_FRAME && idx < total; s++, idx++) {
@@ -1105,19 +1147,22 @@ function simulateGCode() {
       const zm = l.match(/Z([-\d.]+)/); if(zm) penDown = parseFloat(zm[1]) <= 0.5;
       const px = (cx/70)*W, py = (cy/70)*H;
       if (penDown) { tc.lineTo(px, py); tc.stroke(); tc.beginPath(); tc.moveTo(px, py); }
-      else { tc.beginPath(); tc.moveTo(px, py); }
+      else          { tc.beginPath(); tc.moveTo(px, py); }
       state.vizX = cx; state.vizY = cy;
+      // Console: log every LOG_EVERY lines
+      if (idx % LOG_EVERY === 0) {
+        const pct = Math.round((idx / total) * 100);
+        logConsole('→ [' + String(idx + 1).padStart(5) + '/' + total + '] ' + l + (penDown ? ' │ PEN▼' : ' │ PEN▲'), penDown ? 'console-ok' : 'console-dim');
+      }
     }
-    // Compose: ghost + trail + pen dot
     if (vizGhost) vizCtx.drawImage(vizGhost, 0, 0);
     vizCtx.drawImage(trail, 0, 0);
     const px = (cx/70)*W, py = (cy/70)*H;
     vizCtx.strokeStyle = '#00ff88'; vizCtx.lineWidth = 2;
     vizCtx.beginPath(); vizCtx.arc(px, py, 5, 0, Math.PI*2); vizCtx.stroke();
-    // Progress bar
     const pct = Math.round((idx/total)*100);
-    if ($('stream-bar')) $('stream-bar').style.width = pct + '%';
-    if ($('stream-stats')) $('stream-stats').textContent = 'Lines: ' + idx + ' / ' + total;
+    if ($('stream-bar'))   $('stream-bar').style.width = pct + '%';
+    if ($('stream-stats')) $('stream-stats').textContent = 'Lines: ' + idx + ' / ' + total + ' — ' + pct + '%';
     simRaf = requestAnimationFrame(step);
   }
   tc.beginPath();

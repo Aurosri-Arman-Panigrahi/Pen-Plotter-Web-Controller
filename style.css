@@ -738,3 +738,31 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   min-width: 36px;
   text-align: right;
 }
+
+/* ═══ SERIAL CONSOLE STYLES ═══ */
+.console-out {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 260px;
+  padding: 8px;
+  background: rgba(0,0,0,.4);
+  border: 1px solid rgba(0,255,255,.08);
+  border-radius: 6px;
+}
+.console-line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255,255,255,.02);
+  word-break: break-all;
+}
+.con-ts  { color: #444; min-width: 56px; flex-shrink: 0; }
+.con-num { color: #2a6; min-width: 46px; flex-shrink: 0; }
+.con-msg { color: #9cf; }
+.console-ok   .con-msg { color: #00ff88; }
+.console-err  .con-msg { color: #f87171; }
+.console-warn .con-msg { color: #facc15; }
+.console-dim  .con-msg { color: #555; }
+.console-sim  .con-msg { color: #fb923c; }
